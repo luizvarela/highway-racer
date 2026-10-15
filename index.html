@@ -57,6 +57,10 @@
         <div class="touch-hint">Touch: hold left / right side to steer (auto-throttle)</div>
       </div>
       <button id="btn-start" class="btn">PRESS SPACE OR TAP TO DRIVE</button>
+      <div class="menu-row">
+        <button id="btn-garage" class="btn btn-alt">GARAGE</button>
+        <div class="wallet"><span id="start-car">Comet</span> · <b id="start-cash">$0</b></div>
+      </div>
     </div>
 
     <div id="overlay-crash" class="overlay hidden">
@@ -82,7 +86,35 @@
         </div>
       </div>
       <div id="crash-best" class="new-best hidden">NEW BEST!</div>
-      <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>
+      <div class="earned">+<b id="crash-cash">$0</b> cash · total <span id="crash-total">$0</span></div>
+      <div class="menu-row">
+        <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>
+        <button id="btn-garage-2" class="btn btn-alt">GARAGE</button>
+      </div>
+    </div>
+
+    <div id="overlay-garage" class="hidden">
+      <div class="garage-top">
+        <button id="garage-back" class="btn btn-alt btn-small">‹ BACK</button>
+        <div class="garage-title">GARAGE</div>
+        <div id="garage-cash" class="garage-cash">$0</div>
+      </div>
+      <div class="garage-picker">
+        <button id="garage-prev" class="arrow" aria-label="Previous car">‹</button>
+        <div class="garage-car">
+          <div id="garage-name" class="garage-name">Comet</div>
+          <div id="garage-status"></div>
+        </div>
+        <button id="garage-next" class="arrow" aria-label="Next car">›</button>
+      </div>
+      <div class="garage-panel">
+        <div class="garage-head"><span id="garage-blurb"></span><span id="garage-count" class="muted"></span></div>
+        <div class="stat-row" id="stat-topSpeedKmh"><span class="name">Top speed</span><div class="bar"><div class="fill"></div></div><span class="num"></span><div class="pips"></div><button id="up-engine" class="btn btn-up"></button></div>
+        <div class="stat-row" id="stat-accel"><span class="name">Acceleration</span><div class="bar"><div class="fill"></div></div><span class="num"></span><div class="pips"></div><button id="up-turbo" class="btn btn-up"></button></div>
+        <div class="stat-row" id="stat-steerSpeed"><span class="name">Handling</span><div class="bar"><div class="fill"></div></div><span class="num"></span><div class="pips"></div><button id="up-handling" class="btn btn-up"></button></div>
+        <div class="stat-row" id="stat-toughness"><span class="name">Toughness</span><div class="bar"><div class="fill"></div></div><span class="num"></span><div class="pips"></div><span></span></div>
+        <button id="garage-action" class="btn">DRIVE</button>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

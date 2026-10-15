@@ -16,17 +16,14 @@ export const RECYCLE_Z = 20; // a chunk entirely behind this z moves to the fron
 export const FOG_NEAR = 140;
 export const FOG_FAR = 460;
 
+// top speed, acceleration and steering come from the garage car (src/cars.ts)
 export const PLAYER = {
   startSpeedKmh: 60,
   minSpeedKmh: 30,
-  maxSpeedKmh: 240,
-  accel: 7.5, // m/s² at standstill, tapers to 0 at max speed
+  fxMaxSpeedKmh: 250, // speed lines, FOV and camera reach full strength here
   brake: 24, // m/s²
   coastDecel: 2.5, // m/s² with no input
-  steerSpeed: 11, // max lateral m/s
   steerResponse: 9, // how fast lateral velocity reaches its target
-  width: 1.8,
-  length: 4.4,
 };
 
 export const HIGH_SPEED_KMH = 100;

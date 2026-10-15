@@ -1,4 +1,5 @@
 import { HEAT } from "./config";
+import { money } from "./garage";
 import { POINT_SOURCES, type PointSource } from "./scoring";
 
 // Thin wrapper over the DOM HUD and overlays declared in index.html.
@@ -59,13 +60,25 @@ export class Hud {
   private readonly evade = $("hud-evade");
   private readonly evadeFill = $("hud-evade-fill");
 
-  constructor(onStart: () => void) {
+  constructor(onStart: () => void, onGarage: () => void) {
     $("btn-start").addEventListener("click", onStart);
     $("btn-restart").addEventListener("click", onStart);
+    $("btn-garage").addEventListener("click", onGarage);
+    $("btn-garage-2").addEventListener("click", onGarage);
   }
 
-  showStart(): void {
+  showStart(carName: string, cash: number): void {
+    $("start-car").textContent = carName;
+    $("start-cash").textContent = money(cash);
     this.startOverlay.classList.remove("hidden");
+    this.crashOverlay.classList.add("hidden");
+    this.hud.classList.add("hidden");
+  }
+
+  /** Everything off: the garage draws its own overlay. */
+  hideAll(): void {
+    this.clearChase();
+    this.startOverlay.classList.add("hidden");
     this.crashOverlay.classList.add("hidden");
     this.hud.classList.add("hidden");
   }
@@ -130,7 +143,7 @@ export class Hud {
     this.siren.style.opacity = "0";
   }
 
-  showCrash(stats: RunStats, isBest: boolean): void {
+  showCrash(stats: RunStats, isBest: boolean, earned: number, cash: number): void {
     this.clearChase();
     $("crash-title").textContent = stats.end === "busted" ? "BUSTED" : "CRASHED";
     $("crash-score").textContent = Math.floor(stats.score).toLocaleString("en-US");
@@ -142,6 +155,8 @@ export class Hud {
     $("crash-police").textContent = `${stats.takedowns} · ${stats.escapes}`;
     $("crash-heat").textContent = "★".repeat(stats.maxLevel);
     $("crash-best").classList.toggle("hidden", !isBest);
+    $("crash-cash").textContent = money(earned);
+    $("crash-total").textContent = money(cash);
     this.crashOverlay.classList.remove("hidden");
   }
 }

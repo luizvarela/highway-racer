@@ -3,21 +3,23 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { CARS, carById, carStats, cashForScore } from "./cars";
 import { ESCAPE, FOG_FAR, FOG_NEAR, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { Skyline, SpeedLines } from "./environment";
+import { Garage } from "./garage";
 import { Hud, type RunStats } from "./hud";
 import { Input } from "./input";
 import { Player } from "./player";
 import { Police } from "./police";
 import { Road } from "./road";
+import { loadSave, writeSave } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
 import { loadVehicles } from "./vehicles";
 
-type State = "loading" | "ready" | "running" | "crashed";
+type State = "loading" | "ready" | "garage" | "running" | "crashed";
 
 const NIGHT = 0x1a0b2e;
-const BEST_KEY = "highway-racer.best";
 const CRASH_OVERLAY_DELAY = 1.1; // seconds of crash animation before the results panel
 const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
 
@@ -28,22 +30,6 @@ function newStats(): RunStats {
     points: { driving: 0, nearMiss: 0, takedown: 0, copLost: 0, escape: 0 },
     end: "crashed",
   };
-}
-
-function loadBest(): number {
-  try {
-    return Number(localStorage.getItem(BEST_KEY)) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function saveBest(v: number): void {
-  try {
-    localStorage.setItem(BEST_KEY, String(v));
-  } catch {
-    /* storage unavailable: best score just isn't persisted */
-  }
 }
 
 export class Game {
@@ -72,11 +58,16 @@ export class Game {
   private evade = 0; // 0..1 progress towards escaping
   private crashTimer = 0;
   private shake = 0;
-  private best = loadBest();
+  private readonly save = loadSave();
+  private readonly garage: Garage;
+  private garageAngle = 0;
+  // showroom light over the parked car; intensity 0 outside the garage so the
+  // light count (and with it every shader) never changes
+  private readonly showroom = new THREE.SpotLight(0xffffff, 0, 30, 0.6, 0.5, 1);
   private manualTime = false; // tests drive the simulation in fixed steps
 
   static async create(container: HTMLElement): Promise<Game> {
-    await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), "sedan-sports", "police"], MODELS_URL);
+    await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), ...CARS.map((c) => c.model), "police"], MODELS_URL);
     return new Game(container);
   }
 
@@ -105,9 +96,12 @@ export class Game {
     sc.far = 140;
     this.moon.shadow.bias = -0.0005;
     this.scene.add(this.moon, this.moon.target);
+    this.showroom.position.set(2, 9, 4);
+    this.scene.add(this.showroom, this.showroom.target);
 
     this.traffic = new Traffic();
     this.player = new Player();
+    this.useSelectedCar();
     this.scene.add(this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object);
 
     // bloom makes every emissive surface (lines, lamps, lights, windows) glow.
@@ -122,18 +116,32 @@ export class Game {
 
     this.input = new Input(this.renderer.domElement);
     this.input.onAction = () => this.handleAction();
-    this.hud = new Hud(() => this.handleAction());
+    this.hud = new Hud(() => this.handleAction(), () => this.openGarage());
+    const game = this;
+    this.garage = new Garage({
+      save: this.save,
+      preview: (car, stats) => this.player.setCar(car, stats),
+      commit: () => writeSave(this.save),
+      drive: () => {
+        this.closeGarage();
+        this.start();
+      },
+      back: () => {
+        this.closeGarage();
+        this.state = "ready";
+        this.showStart();
+      },
+    });
 
     window.addEventListener("resize", () => this.resize());
     this.resize();
     this.reset();
     this.state = "ready";
-    this.hud.showStart();
+    this.showStart();
 
     this.camera.position.set(0, 7.2, 10);
 
     // read-only hook for automated smoke tests and debugging in the console
-    const game = this;
     (window as unknown as { __game: unknown }).__game = {
       get state() { return game.state; },
       get speedKmh() { return game.player.speedKmh; },
@@ -146,6 +154,7 @@ export class Game {
       get cops() { return game.police.snapshot(); },
       get multiplier() { return game.scoring.multiplier; },
       get evade() { return game.evade; },
+      get save() { return JSON.parse(JSON.stringify(game.save)); },
       get obstacles() { return game.traffic.obstacles(); },
       /** test-only: stop real-time simulation and advance it in fixed 1/60 s steps */
       advance(seconds: number) {
@@ -159,6 +168,7 @@ export class Game {
 
   private handleAction(): void {
     if (this.state === "ready") this.start();
+    else if (this.state === "garage") this.garage.driveIfOwned();
     else if (this.state === "crashed" && this.crashTimer >= CRASH_OVERLAY_DELAY) {
       this.reset();
       this.start();
@@ -181,7 +191,36 @@ export class Game {
 
   private start(): void {
     this.state = "running";
-    this.hud.showRunning(this.best);
+    this.hud.showRunning(this.save.best);
+  }
+
+  private showStart(): void {
+    this.hud.showStart(carById(this.save.selected).name, this.save.cash);
+  }
+
+  private useSelectedCar(): void {
+    const car = carById(this.save.selected);
+    this.player.setCar(car, carStats(car, this.save.cars[car.id]));
+  }
+
+  private openGarage(): void {
+    if (this.state === "crashed" && this.crashTimer < CRASH_OVERLAY_DELAY) return;
+    if (this.state !== "ready" && this.state !== "crashed") return;
+    this.reset();
+    this.state = "garage";
+    this.hud.hideAll();
+    this.traffic.group.visible = false;
+    this.police.group.visible = false;
+    this.showroom.intensity = 28;
+    this.garage.show();
+  }
+
+  private closeGarage(): void {
+    this.showroom.intensity = 0;
+    this.useSelectedCar();
+    this.reset();
+    this.traffic.group.visible = true;
+    this.police.group.visible = true;
   }
 
   private resize(): void {
@@ -215,7 +254,7 @@ export class Game {
       const p = this.player;
       const ev = this.police.update(
         dt,
-        { x: p.x, speed: p.speed, halfWidth: p.halfWidth, halfLength: p.halfLength },
+        { x: p.x, speed: p.speed, halfWidth: p.halfWidth, halfLength: p.halfLength, toughness: p.stats.toughness },
         this.level,
         this.traffic.obstacles(),
         this.state === "running",
@@ -229,16 +268,17 @@ export class Game {
       const before = this.crashTimer;
       this.crashTimer += dt;
       if (before < CRASH_OVERLAY_DELAY && this.crashTimer >= CRASH_OVERLAY_DELAY) {
-        const isBest = Math.floor(this.stats.score) > this.best;
-        if (isBest) {
-          this.best = Math.floor(this.stats.score);
-          saveBest(this.best);
-        }
-        this.hud.showCrash(this.stats, isBest);
+        const score = Math.floor(this.stats.score);
+        const isBest = score > this.save.best;
+        if (isBest) this.save.best = score;
+        const earned = cashForScore(score);
+        this.save.cash += earned;
+        writeSave(this.save);
+        this.hud.showCrash(this.stats, isBest, earned, this.save.cash);
       }
     }
 
-    if (this.state !== "ready") {
+    if (this.state === "running" || this.state === "crashed") {
       this.hud.update(this.stats, this.player.speedKmh, this.highSpeedStreak);
       if (this.state === "running") {
         this.hud.updateChase({
@@ -326,7 +366,7 @@ export class Game {
 
   private speedT(): number {
     const min = PLAYER.minSpeedKmh * KMH;
-    const max = PLAYER.maxSpeedKmh * KMH;
+    const max = PLAYER.fxMaxSpeedKmh * KMH;
     return THREE.MathUtils.clamp((this.player.speed - min) / (max - min), 0, 1);
   }
 
@@ -378,6 +418,20 @@ export class Game {
   private updateCamera(dt: number, speedT: number): void {
     const p = this.player;
     const cam = this.camera;
+
+    if (this.state === "garage") {
+      // slow turntable orbit around the parked car
+      this.garageAngle += dt * 0.35;
+      const r = cam.aspect < 1 ? 13 : 8.5; // portrait needs more distance to fit the car
+      cam.position.set(Math.sin(this.garageAngle + 0.6) * r, 3.2, Math.cos(this.garageAngle + 0.6) * r);
+      cam.fov = (cam.userData.baseFov as number) ?? 62;
+      cam.updateProjectionMatrix();
+      cam.lookAt(0, -0.6, 0);
+      this.skyline.follow(cam.position.x);
+      this.moon.position.set(-20, 40, 25);
+      this.moon.target.position.set(0, 0, -15);
+      return;
+    }
 
     // pull back when a cop is on our tail, so it is in view behind the car
     const cop = this.police.nearest;

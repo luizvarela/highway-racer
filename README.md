@@ -44,18 +44,44 @@ pays more than just driving far.
 
 All of these numbers live in `HEAT`, `POLICE`, `ESCAPE` and `SCORE` in `src/config.ts`.
 
+## Garage
+
+Every run pays **cash**: $1 per 5 points. Spend it in the garage (from the
+start or results screen) on cars and upgrades.
+
+| Car | Price | Top speed | Accel | Handling | Toughness |
+|---|---|---|---|---|---|
+| Comet | free | 205 km/h | 6.5 | 10 | x1.0 |
+| Viper | $3,000 | 215 km/h | 7.5 | 12 | x0.9 |
+| Bruiser | $6,500 | 220 km/h | 7.0 | 9.5 | x1.6 |
+| Phantom | $15,000 | 240 km/h | 8.5 | 12.5 | x1.0 |
+
+- Upgrades, 5 levels each: **engine** +10 km/h top speed, **turbo** +0.6
+  acceleration, **handling** +0.6 steering. Level prices are 1, 2, 3.5, 5.5
+  and 8 times the car's base upgrade price ($250 to $900).
+- **Toughness** stretches the bust meter: x1.6 takes 3.5 s to bust instead of 2.2 s.
+- Cop top speeds run 150 to 210 km/h, so the starter car can't outrun a
+  5-star chase without engine upgrades.
+- Garage keys: ←/→ browse, Space drive (owned cars only), Esc back.
+- Progress is saved in `localStorage` (`src/save.ts`, the place to plug in a
+  portal cloud save). Car names are fictional on purpose; bodies are Kenney CC0
+  models until the hero cars arrive.
+
 ## Layout
 
 | File | What it does |
 |---|---|
 | `src/config.ts` | All tuning: lanes, speeds, traffic, fog, heat, police, scoring |
 | `src/road.ts` | Recycled neon road chunks (asphalt, rails, lamps, city blocks) |
-| `src/player.ts` | Arcade handling: speed + lateral steering, rail scrape, crash spin |
+| `src/player.ts` | Arcade handling from the garage car's stats, rail scrape, crash spin |
 | `src/traffic.ts` | Pooled traffic, lane following, fair spawning, collision, near misses |
 | `src/police.ts` | Pursuit: spawning, slot formation, traffic avoidance, bust meter, light bars |
 | `src/vehicles.ts` | Loads the Kenney Car Kit models (CC0) and adds head/tail lights |
 | `src/environment.ts` | Skyline backdrop and speed lines |
 | `src/scoring.ts` | Combo, multiplier and points per source |
+| `src/cars.ts` | Car catalog, upgrade steps and prices, cash per score |
+| `src/save.ts` | Saved progress (best, cash, owned cars, upgrades) with sanitising |
+| `src/garage.ts` | Garage overlay: browse, buy, upgrade |
 | `src/game.ts` | Loop, states, heat and escapes, chase camera, bloom |
 | `src/input.ts`, `src/hud.ts` | Keyboard/touch input and DOM HUD |
 

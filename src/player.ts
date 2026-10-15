@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { KMH, PLAYER, RAIL_X } from "./config";
 import type { InputState } from "./input";
+import type { CarDef, CarStats } from "./cars";
 import { buildVehicle, spinWheels, type VehicleModel } from "./vehicles";
 
 function underglowTexture(): THREE.CanvasTexture {
@@ -19,28 +20,33 @@ function underglowTexture(): THREE.CanvasTexture {
 // No rigid-body physics needed for a lane racer.
 
 export class Player {
-  readonly model: VehicleModel;
+  readonly object = new THREE.Group();
+  model!: VehicleModel;
+  stats!: CarStats;
   speed = PLAYER.startSpeedKmh * KMH; // m/s
   x = 0;
   private lateralVel = 0;
   private crashSpin = 0;
   crashed = false;
+  private readonly glowMat = new THREE.MeshBasicMaterial({
+    color: 0x00e5ff,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    map: underglowTexture(),
+  });
 
-  constructor() {
-    this.model = buildVehicle("sedan-sports");
+  /** Swap the body and handling for a garage car. */
+  setCar(car: CarDef, stats: CarStats): void {
+    if (this.model) this.object.remove(this.model.group);
+    this.model = buildVehicle(car.model);
+    this.stats = stats;
+    this.glowMat.color.setHex(car.glow);
+
     // neon underglow: an additive quad under the car that bloom picks up
     const { width, length } = this.model.size;
-    const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(width * 1.5, length * 1.15).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        color: 0x00e5ff,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        map: underglowTexture(),
-      }),
-    );
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(width * 1.5, length * 1.15).rotateX(-Math.PI / 2), this.glowMat);
     glow.position.y = 0.03;
     this.model.group.add(glow);
     // headlight cone onto the road ahead
@@ -48,10 +54,11 @@ export class Player {
     head.position.set(0, 0.8, -length / 2);
     head.target.position.set(0, 0, -30);
     this.model.group.add(head, head.target);
+    this.object.add(this.model.group);
   }
 
-  get object(): THREE.Group {
-    return this.model.group;
+  get maxSpeed(): number {
+    return this.stats.topSpeedKmh * KMH;
   }
 
   get halfWidth(): number {
@@ -96,7 +103,7 @@ export class Player {
   }
 
   update(dt: number, input: InputState): void {
-    const max = PLAYER.maxSpeedKmh * KMH;
+    const max = this.maxSpeed;
     const min = PLAYER.minSpeedKmh * KMH;
 
     if (this.crashed) {
@@ -110,7 +117,7 @@ export class Player {
         this.speed -= PLAYER.brake * input.brake * dt;
       } else if (input.throttle > 0) {
         const t = this.speed / max;
-        this.speed += PLAYER.accel * input.throttle * (1 - t * t) * dt;
+        this.speed += this.stats.accel * input.throttle * (1 - t * t) * dt;
       } else {
         this.speed -= PLAYER.coastDecel * dt;
       }
@@ -118,7 +125,7 @@ export class Player {
 
       // steering authority grows with speed, so low-speed lane changes feel heavy
       const authority = THREE.MathUtils.clamp(this.speed / (90 * KMH), 0.45, 1);
-      const targetVel = input.steer * PLAYER.steerSpeed * authority;
+      const targetVel = input.steer * this.stats.steerSpeed * authority;
       this.lateralVel += (targetVel - this.lateralVel) * Math.min(1, PLAYER.steerResponse * dt);
       this.x += this.lateralVel * dt;
 

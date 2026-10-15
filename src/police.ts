@@ -47,6 +47,7 @@ export interface Chaser {
   speed: number;
   halfWidth: number;
   halfLength: number;
+  toughness: number; // the bust meter fills this many times slower
 }
 
 export interface PoliceEvents {
@@ -292,7 +293,7 @@ export class Police {
     }
 
     if (running) {
-      this.bust += inRange ? dt / POLICE.bustFillSeconds : -dt / POLICE.bustDrainSeconds;
+      this.bust += inRange ? dt / (POLICE.bustFillSeconds * player.toughness) : -dt / POLICE.bustDrainSeconds;
       this.bust = THREE.MathUtils.clamp(this.bust, 0, 1);
     }
     this.nearest = nearest ? nearest.z : null;

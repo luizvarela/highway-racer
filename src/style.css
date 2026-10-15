@@ -512,3 +512,233 @@ kbd {
     font-size: 14px;
   }
 }
+
+/* ---- garage & economy ---- */
+
+.menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.btn-alt {
+  color: #f4f4f6;
+  background: linear-gradient(#3a3f55, #262a3a);
+  box-shadow: 0 4px 0 #12141d;
+}
+
+.btn-alt:active {
+  box-shadow: 0 2px 0 #12141d;
+}
+
+.btn-small {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.btn:disabled {
+  cursor: default;
+  filter: grayscale(1) brightness(0.6);
+}
+
+.wallet,
+.earned {
+  color: var(--muted);
+}
+
+.wallet b,
+.earned b {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+#overlay-garage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  pointer-events: none;
+  /* darken only the top and bottom; the car in the middle stays clear */
+  background: linear-gradient(rgba(10, 12, 20, 0.7), transparent 22%, transparent 55%, rgba(10, 12, 20, 0.85));
+}
+
+#overlay-garage button {
+  pointer-events: auto;
+}
+
+.garage-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.garage-title {
+  font-size: 22px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.garage-cash {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--good);
+}
+
+.garage-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-shadow: 0 0 3px #000, 0 2px 8px #000;
+}
+
+.garage-car {
+  text-align: center;
+}
+
+.garage-name {
+  font-size: clamp(32px, 7vw, 56px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+
+#garage-status {
+  font-weight: 800;
+  color: var(--muted);
+}
+
+#garage-status.owned {
+  color: var(--good);
+}
+
+.arrow {
+  width: 52px;
+  height: 52px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(10, 12, 20, 0.55);
+  color: var(--text);
+  font: inherit;
+  font-size: 34px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.garage-panel {
+  margin-top: auto;
+  align-self: center;
+  width: min(620px, 100%);
+  display: grid;
+  gap: 8px;
+  background: var(--panel);
+  padding: 14px 16px;
+  border-radius: 12px;
+}
+
+.garage-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.muted {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 72px 60px 92px;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  min-height: 34px;
+}
+
+.stat-row .name {
+  color: var(--muted);
+}
+
+.stat-row .bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.stat-row .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #ff2bd6);
+  transition: width 0.25s;
+}
+
+.stat-row .num {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pips {
+  display: flex;
+  gap: 3px;
+}
+
+.pips i {
+  flex: 1;
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.pips i.on {
+  background: var(--accent);
+}
+
+.btn-up {
+  padding: 6px 8px;
+  font-size: 13px;
+  box-shadow: 0 3px 0 #1d7a0d;
+}
+
+.bought {
+  animation: bought 0.4s ease-out;
+}
+
+@keyframes bought {
+  30% {
+    transform: scale(1.12);
+    filter: brightness(1.6);
+  }
+}
+
+#garage-action {
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .stat-row {
+    grid-template-columns: 76px minmax(0, 1fr) 60px 84px;
+    font-size: 12px;
+  }
+  .stat-row .pips {
+    display: none;
+  }
+  .garage-head #garage-blurb {
+    font-size: 12px;
+  }
+  .arrow {
+    width: 44px;
+    height: 44px;
+    font-size: 28px;
+  }
+}
