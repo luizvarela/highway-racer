@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Highway Racer Prototype</title>
-    <script type="module" crossorigin src="/highway-racer/assets/index-CnEGkImP.js"></script>
-    <link rel="stylesheet" crossorigin href="/highway-racer/assets/index-q5-gEycN.css">
+    <script type="module" crossorigin src="/highway-racer/assets/index-pzNnHx8Y.js"></script>
+    <link rel="stylesheet" crossorigin href="/highway-racer/assets/index-1fRhhtWf.css">
   </head>
   <body>
     <div id="app"></div>
@@ -36,6 +36,10 @@
           <div class="evade-label">EVADING</div>
           <div class="evade-bar"><div id="hud-evade-fill"></div></div>
         </div>
+        <div id="hud-hazard" class="hidden">
+          <div class="hazard-label">⚠ <span id="hud-hazard-text">ROADBLOCK</span> <span id="hud-hazard-dist">0 m</span></div>
+          <div class="hazard-lanes"><i></i><i></i><i></i><i></i></div>
+        </div>
         <div id="popups"></div>
       </div>
       <div class="hud-right">
@@ -44,6 +48,8 @@
         <div class="label">DISTANCE</div>
         <div class="value small"><span id="hud-distance">0.00</span><span class="unit">km</span></div>
         <div id="hud-highspeed" class="badge hidden">HIGH SPEED <span id="hud-highspeed-time">0.0</span>s</div>
+        <div id="hud-flat" class="badge danger hidden">FLAT TYRES</div>
+        <div id="hud-heli" class="badge heli hidden">🚁 AIR SUPPORT</div>
       </div>
     </div>
 
@@ -55,6 +61,7 @@
         <div><kbd>↑</kbd>/<kbd>W</kbd> accelerate</div>
         <div><kbd>↓</kbd>/<kbd>S</kbd> brake</div>
         <div><kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> steer</div>
+        <div><kbd>M</kbd> sound on/off</div>
         <div class="touch-hint">Touch: hold left / right side to steer (auto-throttle)</div>
       </div>
       <button id="btn-start" class="btn">PRESS SPACE OR TAP TO DRIVE</button>
@@ -75,6 +82,7 @@
           <div><span>Takedowns</span><b id="pts-takedown">0</b></div>
           <div><span>Cops lost</span><b id="pts-copLost">0</b></div>
           <div><span>Escapes</span><b id="pts-escape">0</b></div>
+          <div><span>Roadblocks</span><b id="pts-roadblock">0</b></div>
         </div>
         <div class="stats">
           <h2>Run</h2>
@@ -83,6 +91,7 @@
           <div><span>Near misses</span><b id="crash-nearmiss">0</b></div>
           <div><span>Best multiplier</span><b id="crash-mult">x1</b></div>
           <div><span>Takedowns · escapes</span><b id="crash-police">0 · 0</b></div>
+          <div><span>Roadblocks run</span><b id="crash-roadblocks">0</b></div>
           <div><span>Wanted level</span><b id="crash-heat">★</b></div>
         </div>
       </div>
@@ -93,6 +102,8 @@
         <button id="btn-garage-2" class="btn btn-alt">GARAGE</button>
       </div>
     </div>
+
+    <button id="btn-mute" aria-label="Toggle sound" title="Sound (M)">🔊</button>
 
     <div id="overlay-garage" class="hidden">
       <div class="garage-top">
