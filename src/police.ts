@@ -304,6 +304,25 @@ export class Police {
     return ev;
   }
 
+  /** Marketing shots only: park cops at fixed spots (relative to the player) with the bars lit at `flashTime`. */
+  pose(spots: { x: number; z: number; yaw?: number }[], flashTime: number, allBars = false): void {
+    this.reset();
+    spots.slice(0, POOL).forEach((s, i) => {
+      const c = this.cops[i];
+      c.active = true;
+      c.crashed = false;
+      c.x = s.x;
+      c.z = s.z;
+      c.model.group.position.set(s.x, 0, s.z);
+      c.model.group.rotation.set(0, s.yaw ?? 0, 0);
+      c.model.group.visible = true;
+    });
+    const nearest = this.cops.filter((c) => c.active).sort((a, b) => Math.abs(a.z) - Math.abs(b.z))[0] ?? null;
+    this.flashTime = flashTime;
+    this.flash(0, nearest);
+    if (allBars) for (const m of this.barMats) m.emissiveIntensity = 6; // red and blue at once
+  }
+
   private flash(dt: number, nearest: Cop | null): void {
     this.flashTime += dt;
     // double-blink red, then double-blink blue

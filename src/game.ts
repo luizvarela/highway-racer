@@ -201,6 +201,30 @@ export class Game {
       get portal() { return game.portal.name; },
       get audio() { return game.sound.state; },
       get audioLog() { return game.sound.log.join(" | "); },
+      /**
+       * Marketing only (cover images, preview videos): freeze the simulation and
+       * stage a shot. Positions are relative to the player, ahead = negative z.
+       */
+      showcase(o: {
+        car: string; x?: number; cops?: { x: number; z: number; yaw?: number }[]; flashTime?: number; allBars?: boolean;
+        camera: { pos: [number, number, number]; look: [number, number, number]; fov: number }; speedLines?: number;
+      }) {
+        game.manualTime = true;
+        game.hud.hideAll();
+        const car = carById(o.car);
+        game.player.setCar(car, carStats(car, { engine: 5, turbo: 5, handling: 5 }));
+        game.player.x = o.x ?? 0;
+        game.player.object.position.set(game.player.x, 0, 0);
+        game.player.object.rotation.set(0, 0, 0);
+        game.police.pose(o.cops ?? [], o.flashTime ?? 0.05, o.allBars);
+        game.speedLines.update(o.speedLines ?? 0, 0, game.player.x);
+        const cam = game.camera;
+        cam.position.set(...o.camera.pos);
+        cam.fov = o.camera.fov;
+        cam.updateProjectionMatrix();
+        cam.lookAt(...o.camera.look);
+        game.skyline.follow(cam.position.x);
+      },
       /** test-only: suspend audio like an iOS interruption */
       interruptAudio() { game.sound.interruptForTest(); },
       get adBusy() { return game.adBusy; },
