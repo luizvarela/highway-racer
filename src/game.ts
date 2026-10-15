@@ -4,9 +4,13 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CARS, carById, carStats, cashForScore } from "./cars";
-import { ESCAPE, FOG_FAR, FOG_NEAR, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
+import { Sound } from "./audio";
+import { ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
+import { DEBRIS_KINDS, Debris } from "./debris";
 import { Skyline, SpeedLines } from "./environment";
 import { Garage } from "./garage";
+import { Hazards } from "./hazards";
+import { Helicopter } from "./helicopter";
 import { Hud, type RunStats } from "./hud";
 import { Input } from "./input";
 import { Player } from "./player";
@@ -15,7 +19,7 @@ import { Road } from "./road";
 import { loadSave, writeSave } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
-import { loadVehicles } from "./vehicles";
+import { loadProps, loadVehicles } from "./vehicles";
 
 type State = "loading" | "ready" | "garage" | "running" | "crashed";
 
@@ -26,8 +30,8 @@ const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
 function newStats(): RunStats {
   return {
     score: 0, distanceKm: 0, topSpeedKmh: 0, highSpeedSeconds: 0,
-    nearMisses: 0, bestCombo: 0, bestMultiplier: 1, takedowns: 0, copsLost: 0, escapes: 0, maxLevel: 1,
-    points: { driving: 0, nearMiss: 0, takedown: 0, copLost: 0, escape: 0 },
+    nearMisses: 0, bestCombo: 0, bestMultiplier: 1, takedowns: 0, copsLost: 0, escapes: 0, roadblocks: 0, maxLevel: 1,
+    points: { driving: 0, nearMiss: 0, takedown: 0, copLost: 0, escape: 0, roadblock: 0 },
     end: "crashed",
   };
 }
@@ -65,9 +69,15 @@ export class Game {
   // light count (and with it every shader) never changes
   private readonly showroom = new THREE.SpotLight(0xffffff, 0, 30, 0.6, 0.5, 1);
   private manualTime = false; // tests drive the simulation in fixed steps
+  private readonly hazards: Hazards;
+  private readonly heli = new Helicopter();
+  private readonly debris: Debris;
+  private readonly sound = new Sound(this.save.muted);
+  private hazardWarned = false; // the warning beep plays once per hazard
 
   static async create(container: HTMLElement): Promise<Game> {
     await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), ...CARS.map((c) => c.model), "police"], MODELS_URL);
+    await loadProps(["cone", ...DEBRIS_KINDS], MODELS_URL); // props are scaled from the loaded sedan
     return new Game(container);
   }
 
@@ -102,7 +112,12 @@ export class Game {
     this.traffic = new Traffic();
     this.player = new Player();
     this.useSelectedCar();
-    this.scene.add(this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object);
+    this.hazards = new Hazards(this.police.barMats);
+    this.debris = new Debris();
+    this.scene.add(
+      this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object,
+      this.hazards.group, this.heli.group, this.debris.group,
+    );
 
     // bloom makes every emissive surface (lines, lamps, lights, windows) glow.
     // The composer renders off-screen, where the canvas' antialias flag does not
@@ -116,12 +131,21 @@ export class Game {
 
     this.input = new Input(this.renderer.domElement);
     this.input.onAction = () => this.handleAction();
-    this.hud = new Hud(() => this.handleAction(), () => this.openGarage());
+    this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute());
+    this.hud.setMuted(this.save.muted);
+    // browsers only start audio from a user gesture
+    const unlock = () => this.sound.unlock();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", (e) => {
+      unlock();
+      if (e.code === "KeyM" && !e.repeat) this.toggleMute();
+    });
     const game = this;
     this.garage = new Garage({
       save: this.save,
       preview: (car, stats) => this.player.setCar(car, stats),
       commit: () => writeSave(this.save),
+      purchased: () => this.sound.buy(),
       drive: () => {
         this.closeGarage();
         this.start();
@@ -154,8 +178,17 @@ export class Game {
       get cops() { return game.police.snapshot(); },
       get multiplier() { return game.scoring.multiplier; },
       get evade() { return game.evade; },
+      get hazards() { return game.hazards.snapshot(); },
+      get tiresBlown() { return game.player.tiresBlown; },
+      get heliWatching() { return game.heli.watching; },
+      /** test-only: raise the wanted level */
+      setHeat(h: number) { game.heat = h; },
+      /** test-only: put a hazard on the road ahead (lane: 0..3, or the player's for spikes) */
+      spawnHazard(kind: "spikes" | "roadblock", distance: number, lane = Math.round(game.player.x / 3.6 + 1.5)) {
+        return game.hazards.spawn(kind, lane, distance);
+      },
       get save() { return JSON.parse(JSON.stringify(game.save)); },
-      get obstacles() { return game.traffic.obstacles(); },
+      get obstacles() { return [...game.traffic.obstacles(), ...game.hazards.obstacles()]; },
       /** test-only: stop real-time simulation and advance it in fixed 1/60 s steps */
       advance(seconds: number) {
         game.manualTime = true;
@@ -179,6 +212,10 @@ export class Game {
     this.player.reset();
     this.traffic.reset();
     this.police.reset();
+    this.hazards.reset();
+    this.heli.reset();
+    this.debris.reset();
+    this.hazardWarned = false;
     this.stats = newStats();
     this.scoring.reset();
     this.heat = 0;
@@ -189,8 +226,16 @@ export class Game {
     this.shake = 0;
   }
 
+  private toggleMute(): void {
+    this.save.muted = !this.save.muted;
+    this.sound.setMuted(this.save.muted);
+    this.hud.setMuted(this.save.muted);
+    writeSave(this.save);
+  }
+
   private start(): void {
     this.state = "running";
+    document.body.classList.add("driving");
     this.hud.showRunning(this.save.best);
   }
 
@@ -250,16 +295,33 @@ export class Game {
       this.player.update(dt, input);
       dz = this.player.speed * dt;
       this.road.update(dz);
-      this.traffic.update(dt, this.player.speed, this.stats.distanceKm);
       const p = this.player;
+      const running = this.state === "running";
+      this.traffic.walls = this.hazards.walls();
+      this.traffic.update(dt, p.speed, this.stats.distanceKm);
+      const chased = this.police.activeCount > 0;
+      const hz = this.hazards.update(dt, p.speed, p.x, p.halfLength, this.level, chased, running);
       const ev = this.police.update(
         dt,
         { x: p.x, speed: p.speed, halfWidth: p.halfWidth, halfLength: p.halfLength, toughness: p.stats.toughness },
         this.level,
-        this.traffic.obstacles(),
-        this.state === "running",
+        [...this.traffic.obstacles(), ...this.hazards.obstacles()],
+        running,
       );
-      if (this.state === "running") this.policeEvents(ev);
+      for (const w of ev.wrecks) this.debris.burst(w.x, w.z, w.speed, 4, 0.8);
+      if (running) {
+        this.policeEvents(ev);
+        for (let i = 0; i < hz.roadblocksPassed; i++) {
+          this.chain(HAZARDS.roadblock.combo);
+          this.hud.popup(`ROADBLOCK RUN +${this.scoring.award("roadblock", HAZARDS.roadblock.bonus)}`, "escape");
+          this.sound.roadblock();
+          this.stats.roadblocks++;
+        }
+      }
+      const heliWanted = running && chased && this.level >= HAZARDS.heli.minLevel;
+      if (this.heli.update(dt, heliWanted, p.x) === "arrived") this.hud.popup("AIR SUPPORT ON YOU", "hazard");
+      if (p.tiresBlown && !p.crashed && Math.random() < 0.5) this.debris.spark(p.x, 0.15, p.halfLength - 0.6, 2, p.speed);
+      this.debris.update(dt, p.speed);
     }
 
     if (this.state === "running") {
@@ -291,8 +353,20 @@ export class Game {
           multiplier: this.scoring.multiplier,
           evade: this.pursuit ? this.evade : 0,
         });
+        const warning = this.hazards.warning();
+        if (warning && !this.hazardWarned) this.sound.warning();
+        this.hazardWarned = warning !== null;
+        this.hud.updateHazards(warning, this.player.tiresBlown, this.heli.watching);
       }
     }
+    const nearCop = this.police.nearest;
+    this.sound.update({
+      speedKmh: this.state === "running" || this.state === "crashed" ? this.player.speedKmh : 0,
+      throttle: this.state === "running" ? Math.max(input.throttle, input.brake > 0 ? 0 : 0.3) : 0,
+      driving: this.state === "running",
+      siren: this.state === "running" && nearCop !== null ? Math.max(0, 1 - Math.max(0, nearCop) / 150) : 0,
+      heli: this.state === "running" && this.heli.watching ? 1 : 0,
+    });
     const speedT = this.speedT();
     this.speedLines.update(speedT, dz, this.player.x);
     this.updateCamera(dt, speedT);
@@ -309,6 +383,7 @@ export class Game {
       this.heat += HEAT.takedown;
       this.chain(SCORE.takedownCombo);
       this.hud.popup(`TAKEDOWN +${this.scoring.award("takedown", SCORE.takedown)}`, "takedown");
+      this.sound.takedown();
     }
     for (let i = 0; i < ev.lost; i++) {
       this.stats.copsLost++;
@@ -316,12 +391,17 @@ export class Game {
     }
     if (ev.bumpSide) {
       this.player.bump(ev.bumpSide);
+      this.sound.bump();
+      this.debris.spark(this.player.x - ev.bumpSide * this.player.halfWidth, 0.6, 0, 20, this.player.speed);
       this.shake = Math.max(this.shake, 0.25);
     }
   }
 
   private chain(steps: number): void {
-    if (this.scoring.chain(steps)) this.hud.popup(`MULTIPLIER x${this.scoring.multiplier}`, "multiplier");
+    if (this.scoring.chain(steps)) {
+      this.hud.popup(`MULTIPLIER x${this.scoring.multiplier}`, "multiplier");
+      this.sound.multiplier(this.scoring.multiplier);
+    }
   }
 
   /** Stay clear of the cops long enough and the wanted level drops a star. */
@@ -335,7 +415,8 @@ export class Game {
       this.evade = Math.max(0, this.evade - dt / ESCAPE.drainSeconds);
       return;
     }
-    this.evade += dt / (ESCAPE.baseSeconds + ESCAPE.perLevelSeconds * this.level);
+    const rate = this.heli.watching ? HAZARDS.heli.evadeRate : 1;
+    this.evade += (rate * dt) / (ESCAPE.baseSeconds + ESCAPE.perLevelSeconds * this.level);
     if (this.evade < 1) return;
 
     const from = this.level;
@@ -343,6 +424,8 @@ export class Game {
     this.heat = Math.max(0, (from - 2) * HEAT.perLevel); // start of the level below
     this.stats.escapes++;
     this.police.standDown(ESCAPE.cooldown);
+    this.hazards.clearAhead();
+    this.sound.escape();
     this.pursuit = false;
     this.evade = 0;
     const label = from > 1 ? `ESCAPED ${"★".repeat(from - 1)}` : "CLEAN GETAWAY";
@@ -352,6 +435,7 @@ export class Game {
   private end(reason: RunStats["end"]): void {
     this.stats.end = reason;
     this.state = "crashed";
+    document.body.classList.remove("driving");
     this.highSpeedStreak = 0;
     this.scoring.breakCombo();
     this.syncScore();
@@ -399,13 +483,27 @@ export class Game {
       this.heat += HEAT.nearMiss;
       this.chain(1);
       this.hud.popup(`NEAR MISS +${this.scoring.award("nearMiss", SCORE.nearMiss)}`, "near");
+      this.sound.nearMiss();
     }
     this.updateEscape(dt);
     this.stats.maxLevel = Math.max(this.stats.maxLevel, this.level);
     this.syncScore();
 
-    const side = this.traffic.collide({ x: p.x, z: 0, halfWidth: p.halfWidth * 0.95, halfLength: p.halfLength * 0.95 });
+    const box = { x: p.x, z: 0, halfWidth: p.halfWidth * 0.95, halfLength: p.halfLength * 0.95 };
+    const hit = this.hazards.collide(box);
+    if (hit.spikes) {
+      const s = HAZARDS.spikes;
+      p.blowTires(s.capSeconds, s.capKmh, s.speedKept);
+      this.heat += s.heat;
+      this.shake = Math.max(this.shake, 0.35);
+      this.debris.spark(p.x, 0.2, 0, 40, p.speed);
+      this.sound.spikes();
+      this.hud.popup("TYRES BLOWN", "hazard");
+    }
+    const side = this.traffic.collide(box) || hit.roadblock;
     if (side !== 0) {
+      this.debris.burst(p.x, -p.halfLength, p.speed, 7, 1.2);
+      this.sound.crash();
       p.crash(side);
       this.shake = 0.6;
       this.end("crashed");

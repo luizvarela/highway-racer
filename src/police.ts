@@ -52,6 +52,7 @@ export interface Chaser {
 
 export interface PoliceEvents {
   takedowns: number;
+  wrecks: { x: number; z: number; speed: number }[]; // where each takedown happened
   lost: number;
   bumpSide: number; // non-zero when a cop side-swiped the player
 }
@@ -62,7 +63,8 @@ const overlaps = (a: Box, b: Box, shrink = 0.92) =>
 export class Police {
   readonly group = new THREE.Group();
   private readonly cops: Cop[] = [];
-  private readonly barMats = BAR_COLORS.map(
+  /** light-bar materials, shared with the roadblock cars so they flash in sync */
+  readonly barMats = BAR_COLORS.map(
     (c) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c, emissiveIntensity: 6 }),
   );
   // one red and one blue light that follow the nearest cop and wash the road;
@@ -178,7 +180,7 @@ export class Police {
   }
 
   update(dt: number, player: Chaser, level: number, obstacles: Obstacle[], running: boolean): PoliceEvents {
-    const ev: PoliceEvents = { takedowns: 0, lost: 0, bumpSide: 0 };
+    const ev: PoliceEvents = { takedowns: 0, wrecks: [], lost: 0, bumpSide: 0 };
     const maxSpeed = POLICE.maxSpeedKmh[level - 1] * KMH;
     const playerBox: Box = { x: player.x, z: 0, halfWidth: player.halfWidth, halfLength: player.halfLength };
 
@@ -261,6 +263,7 @@ export class Police {
           c.spin = (Math.random() < 0.5 ? -1 : 1) * (2 + c.speed * 0.04);
           c.lateralVel = (Math.random() - 0.5) * 6;
           ev.takedowns++;
+          ev.wrecks.push({ x: c.x, z: c.z, speed: c.speed });
         } else if (running && overlaps(box, playerBox, 1)) {
           const dx = player.x - c.x;
           if (Math.abs(c.z) < hl + player.halfLength - 1.2) {

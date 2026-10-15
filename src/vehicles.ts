@@ -44,6 +44,46 @@ export async function loadVehicles(kinds: VehicleKind[], baseUrl: string): Promi
   );
 }
 
+// Props from the same kit (debris, cones), at the same scale as the cars.
+export type PropKind =
+  | "cone" | "debris-bumper" | "debris-door" | "debris-door-window" | "debris-tire"
+  | "debris-plate-a" | "debris-plate-small-a" | "debris-spoiler-a" | "debris-bolt";
+
+const props = new Map<PropKind, THREE.Group>();
+
+export async function loadProps(kinds: PropKind[], baseUrl: string): Promise<void> {
+  const loader = new GLTFLoader();
+  await Promise.all(
+    kinds.map(async (kind) => {
+      const gltf = await loader.loadAsync(`${baseUrl}${kind}.glb`);
+      props.set(kind, gltf.scene);
+    }),
+  );
+}
+
+/** Kit units to metres, taken from the sedan (load vehicles first). */
+function kitScale(): number {
+  const sedan = templates.get("sedan");
+  if (!sedan) return 1;
+  return LENGTH_M.sedan / new THREE.Box3().setFromObject(sedan).getSize(new THREE.Vector3()).z;
+}
+
+/** A prop clone centred on its own origin, in metres. */
+export function buildProp(kind: PropKind): THREE.Group {
+  const template = props.get(kind);
+  if (!template) throw new Error(`prop "${kind}" was not loaded`);
+  const inner = template.clone(true);
+  const scale = kitScale();
+  inner.scale.setScalar(scale);
+  const box = new THREE.Box3().setFromObject(inner);
+  const c = box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x, -c.y, -c.z);
+  const group = new THREE.Group();
+  group.add(inner);
+  group.userData.size = box.getSize(new THREE.Vector3());
+  return group;
+}
+
 const tailMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2030, emissiveIntensity: 4 });
 const headMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff4d6, emissiveIntensity: 3 });
 const lightGeo = new THREE.BoxGeometry(1, 1, 1);

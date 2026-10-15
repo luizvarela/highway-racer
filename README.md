@@ -9,7 +9,7 @@ npm run dev      # http://localhost:5173
 npm run build    # typecheck + production build in dist/
 ```
 
-Controls: ↑/W accelerate, ↓/S brake, ←→/A D steer, Space start/restart.
+Controls: ↑/W accelerate, ↓/S brake, ←→/A D steer, Space start/restart, M sound.
 Touch: hold the left/right half of the screen to steer (auto-throttle), both halves to brake.
 
 ## Getaway rules
@@ -44,6 +44,33 @@ pays more than just driving far.
 
 All of these numbers live in `HEAT`, `POLICE`, `ESCAPE` and `SCORE` in `src/config.ts`.
 
+## Hazards
+
+The police put obstacles on the road ahead while they chase you. A warning
+shows the distance and the lanes (red = blocked).
+
+- **Spike strips** (2+ stars): laid across your lane, sometimes the next one
+  too. Running over them blows your tyres: you lose 45% of your speed, top
+  speed is capped at 125 km/h for 5 s and the car pulls side to side. Cops
+  that drive over a strip crash (takedown).
+- **Roadblocks** (3+ stars): police cars parked across every lane but one,
+  with traffic queuing behind them. Hitting one ends the run. Getting through
+  the gap pays 800 and adds 2 to the combo.
+- **Helicopter** (5 stars): flies in and keeps a searchlight on you. While it
+  is overhead, escaping takes twice as long.
+- Crashes and takedowns throw car parts (Kenney debris props) and sparks.
+
+Tuning lives in `HAZARDS` in `src/config.ts`.
+
+## Sound
+
+All sound is synthesised with WebAudio in `src/audio.ts` (no audio files):
+engine with gear shifts, wind, siren by police distance, helicopter rotor,
+and effects for near misses, takedowns, crashes, spikes, roadblocks,
+multiplier, escapes, purchases and hazard warnings. `M` or the speaker button
+mutes; the setting is saved. Audio starts on the first click or key press and
+pauses while the tab is hidden.
+
 ## Garage
 
 Every run pays **cash**: $1 per 5 points. Spend it in the garage (from the
@@ -74,14 +101,18 @@ start or results screen) on cars and upgrades.
 | `src/config.ts` | All tuning: lanes, speeds, traffic, fog, heat, police, scoring |
 | `src/road.ts` | Recycled neon road chunks (asphalt, rails, lamps, city blocks) |
 | `src/player.ts` | Arcade handling from the garage car's stats, rail scrape, crash spin |
-| `src/traffic.ts` | Pooled traffic, lane following, fair spawning, collision, near misses |
+| `src/traffic.ts` | Pooled traffic, lane following, queuing at roadblocks, fair spawning, collision, near misses |
 | `src/police.ts` | Pursuit: spawning, slot formation, traffic avoidance, bust meter, light bars |
-| `src/vehicles.ts` | Loads the Kenney Car Kit models (CC0) and adds head/tail lights |
+| `src/vehicles.ts` | Loads the Kenney Car Kit models and props (CC0) and adds head/tail lights |
 | `src/environment.ts` | Skyline backdrop and speed lines |
 | `src/scoring.ts` | Combo, multiplier and points per source |
 | `src/cars.ts` | Car catalog, upgrade steps and prices, cash per score |
 | `src/save.ts` | Saved progress (best, cash, owned cars, upgrades) with sanitising |
 | `src/garage.ts` | Garage overlay: browse, buy, upgrade |
+| `src/hazards.ts` | Spike strips and roadblocks: spawning, warnings, collisions, lane walls for traffic |
+| `src/helicopter.ts` | 5-star helicopter with searchlight (built from primitives) |
+| `src/debris.ts` | Pooled flying car parts and spark bursts |
+| `src/audio.ts` | Procedural WebAudio engine, siren and effects |
 | `src/game.ts` | Loop, states, heat and escapes, chase camera, bloom |
 | `src/input.ts`, `src/hud.ts` | Keyboard/touch input and DOM HUD |
 

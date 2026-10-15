@@ -11,6 +11,7 @@ export interface GarageHost {
   readonly save: SaveData;
   preview(car: CarDef, stats: CarStats): void;
   commit(): void;
+  purchased(): void;
   drive(): void;
   back(): void;
 }
@@ -75,6 +76,7 @@ export class Garage {
     save.cars[car.id] = noUpgrades();
     save.selected = car.id;
     this.host.commit();
+    this.host.purchased();
     this.render();
     this.flash("garage-action");
   }
@@ -106,6 +108,7 @@ export class Garage {
     save.cash -= price;
     up[kind]++;
     this.host.commit();
+    this.host.purchased();
     this.render();
     this.flash(`up-${kind}`);
   }

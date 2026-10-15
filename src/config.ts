@@ -38,6 +38,8 @@ export const TRAFFIC = {
   maxCount: 30,
   minLaneGap: 26, // free road needed in a lane to spawn
   followGap: 14, // traffic slows down behind a slower vehicle within this gap
+  brakeDecel: 6, // m/s², for stopping behind a stopped vehicle or roadblock
+  stopGap: 2.5, // metres left when stopped
 };
 
 export const laneCenter = (lane: number): number =>
@@ -94,4 +96,29 @@ export const ESCAPE = {
   drainSeconds: 1.5, // how fast progress drains while a cop is close
   bonusPerLevel: 400,
   cooldown: 6, // seconds before the next cop after an escape
+};
+
+// Hazards the police put on the road ahead once the wanted level is high enough.
+export const HAZARDS = {
+  spawnAhead: 380, // metres (inside the fog)
+  warnDistance: 260, // HUD warning from this far out
+  minSpacing: 160, // metres between two hazards
+  spikes: {
+    minLevel: 2,
+    interval: [13, 22] as [number, number], // seconds between strips
+    speedKept: 0.55, // speed multiplier when the tyres blow
+    capKmh: 125, // top speed with blown tyres...
+    capSeconds: 5, // ...for this long
+    heat: 3,
+  },
+  roadblock: {
+    minLevel: 3,
+    interval: [20, 34] as [number, number],
+    bonus: 800, // points for getting through the gap
+    combo: 2,
+  },
+  heli: {
+    minLevel: 5,
+    evadeRate: 0.5, // escape progress fills this much slower under the searchlight
+  },
 };

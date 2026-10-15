@@ -13,12 +13,13 @@ export interface SaveData {
   selected: string;
   /** owned cars and their upgrade levels */
   cars: Record<string, Upgrades>;
+  muted: boolean;
 }
 
 export const noUpgrades = (): Upgrades => ({ engine: 0, turbo: 0, handling: 0 });
 
 function fresh(): SaveData {
-  return { v: 1, best: 0, cash: 0, selected: CARS[0].id, cars: { [CARS[0].id]: noUpgrades() } };
+  return { v: 1, best: 0, cash: 0, selected: CARS[0].id, cars: { [CARS[0].id]: noUpgrades() }, muted: false };
 }
 
 function read(key: string): string | null {
@@ -44,6 +45,7 @@ export function loadSave(): SaveData {
         for (const k of UPGRADE_KINDS) clean[k] = Math.min(MAX_UPGRADE, Math.max(0, Math.floor(Number(up[k]) || 0)));
         data.cars[car.id] = clean;
       }
+      data.muted = raw.muted === true;
       if (typeof raw.selected === "string" && data.cars[raw.selected]) data.selected = raw.selected;
     } else {
       data.best = Math.max(0, Math.floor(Number(read(LEGACY_BEST_KEY)) || 0));

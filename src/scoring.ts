@@ -4,9 +4,9 @@ import { SCORE } from "./config";
 // so the multiplier applies to everything and the results can show where the
 // points came from.
 
-export type PointSource = "driving" | "nearMiss" | "takedown" | "copLost" | "escape";
+export type PointSource = "driving" | "nearMiss" | "takedown" | "copLost" | "escape" | "roadblock";
 
-export const POINT_SOURCES: PointSource[] = ["driving", "nearMiss", "takedown", "copLost", "escape"];
+export const POINT_SOURCES: PointSource[] = ["driving", "nearMiss", "takedown", "copLost", "escape", "roadblock"];
 
 export class Scoring {
   combo = 0;

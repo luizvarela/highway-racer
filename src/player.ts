@@ -28,6 +28,9 @@ export class Player {
   private lateralVel = 0;
   private crashSpin = 0;
   crashed = false;
+  private flatTimer = 0; // seconds of blown tyres left
+  private flatCap = 0; // m/s top speed while flat
+  private wobble = 0;
   private readonly glowMat = new THREE.MeshBasicMaterial({
     color: 0x00e5ff,
     transparent: true,
@@ -58,7 +61,19 @@ export class Player {
   }
 
   get maxSpeed(): number {
-    return this.stats.topSpeedKmh * KMH;
+    const top = this.stats.topSpeedKmh * KMH;
+    return this.flatTimer > 0 ? Math.min(top, this.flatCap) : top;
+  }
+
+  get tiresBlown(): boolean {
+    return this.flatTimer > 0;
+  }
+
+  /** Spike strip: lose speed now, limp along with a capped top speed for a while. */
+  blowTires(seconds: number, capKmh: number, speedKept: number): void {
+    this.flatTimer = seconds;
+    this.flatCap = capKmh * KMH;
+    this.speed *= speedKept;
   }
 
   get halfWidth(): number {
@@ -79,6 +94,7 @@ export class Player {
     this.lateralVel = 0;
     this.crashSpin = 0;
     this.crashed = false;
+    this.flatTimer = 0;
     this.object.position.set(0, 0, 0);
     this.object.rotation.set(0, 0, 0);
   }
@@ -121,11 +137,19 @@ export class Player {
       } else {
         this.speed -= PLAYER.coastDecel * dt;
       }
-      this.speed = THREE.MathUtils.clamp(this.speed, min, max);
+      // over the cap (just spiked, or flat): shed speed fast but not instantly
+      if (this.speed > max) this.speed = Math.max(max, this.speed - PLAYER.brake * 0.5 * dt);
+      this.speed = Math.max(min, this.speed);
 
       // steering authority grows with speed, so low-speed lane changes feel heavy
       const authority = THREE.MathUtils.clamp(this.speed / (90 * KMH), 0.45, 1);
-      const targetVel = input.steer * this.stats.steerSpeed * authority;
+      let targetVel = input.steer * this.stats.steerSpeed * authority;
+      if (this.flatTimer > 0) {
+        // flat tyres: the car tugs from side to side
+        this.flatTimer -= dt;
+        this.wobble += dt;
+        targetVel = targetVel * 0.7 + Math.sin(this.wobble * 9) * 1.6;
+      }
       this.lateralVel += (targetVel - this.lateralVel) * Math.min(1, PLAYER.steerResponse * dt);
       this.x += this.lateralVel * dt;
 

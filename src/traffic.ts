@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { KMH, LANE_COUNT, SCORE, TRAFFIC, laneCenter } from "./config";
+import type { LaneWall } from "./hazards";
 import { buildVehicle, spinWheels, type VehicleKind, type VehicleModel } from "./vehicles";
 
 // Pooled traffic. Every vehicle keeps its lane, drives at its own cruise speed
@@ -30,6 +31,9 @@ export const TRAFFIC_KINDS: { kind: VehicleKind; weight: number; speedKmh: [numb
   { kind: "firetruck", weight: 0.3, speedKmh: [60, 85] },
 ];
 
+/** Highest speed that can still stop within `gap` metres (leaving TRAFFIC.stopGap). */
+const brakeSpeed = (gap: number) => Math.sqrt(2 * TRAFFIC.brakeDecel * Math.max(0, gap - TRAFFIC.stopGap));
+
 const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -47,6 +51,8 @@ export interface Obstacle extends Box {
 export class Traffic {
   readonly group = new THREE.Group();
   private readonly cars: TrafficCar[] = [];
+  /** blocked lanes (roadblocks) that traffic stops behind; set every frame */
+  walls: LaneWall[] = [];
 
   constructor() {
     const totalWeight = TRAFFIC_KINDS.reduce((s, k) => s + k.weight, 0);
@@ -100,6 +106,7 @@ export class Traffic {
     const car = pick(free);
     const lane = Math.floor(Math.random() * LANE_COUNT);
     if (!this.laneIsClear(lane, z, car.model.size.length) || !this.leavesAGap(lane, z)) return false;
+    if (this.walls.some((w) => w.lane === lane && Math.abs(w.z - z) < 40)) return false;
 
     const [lo, hi] = car.model.group.userData.speedRange as [number, number];
     car.active = true;
@@ -130,8 +137,13 @@ export class Traffic {
           leader = other;
         }
       }
-      const target = leader && leaderGap < TRAFFIC.followGap ? Math.min(car.cruise, leader.speed * 0.98) : car.cruise;
-      car.speed += (target - car.speed) * Math.min(1, 2 * dt);
+      let target = leader && leaderGap < TRAFFIC.followGap ? Math.min(car.cruise, leader.speed * 0.98) : car.cruise;
+      // never closer than the braking distance to a stopped leader or a roadblock
+      if (leader) target = Math.min(target, leader.speed + brakeSpeed(leaderGap));
+      for (const w of this.walls) {
+        if (w.lane === car.lane && w.z < z) target = Math.min(target, brakeSpeed(z - car.model.size.length / 2 - w.z));
+      }
+      car.speed += (target - car.speed) * Math.min(1, (target < car.speed ? 5 : 2) * dt);
 
       car.model.group.position.z += (playerSpeed - car.speed) * dt;
       spinWheels(car.model, car.speed, dt);

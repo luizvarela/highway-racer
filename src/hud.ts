@@ -1,5 +1,6 @@
 import { HEAT } from "./config";
 import { money } from "./garage";
+import type { HazardWarning } from "./hazards";
 import { POINT_SOURCES, type PointSource } from "./scoring";
 
 // Thin wrapper over the DOM HUD and overlays declared in index.html.
@@ -17,6 +18,7 @@ export interface RunStats {
   takedowns: number;
   copsLost: number;
   escapes: number;
+  roadblocks: number;
   maxLevel: number;
   points: Record<PointSource, number>;
   end: "crashed" | "busted";
@@ -33,7 +35,7 @@ export interface ChaseView {
   evade: number; // 0..1 escape progress
 }
 
-export type PopupKind = "near" | "takedown" | "lost" | "multiplier" | "escape";
+export type PopupKind = "near" | "takedown" | "lost" | "multiplier" | "escape" | "hazard";
 
 export class Hud {
   private readonly hud = $("hud");
@@ -59,8 +61,16 @@ export class Hud {
   private readonly comboFill = $("hud-combo-fill");
   private readonly evade = $("hud-evade");
   private readonly evadeFill = $("hud-evade-fill");
+  private readonly hazard = $("hud-hazard");
+  private readonly hazardText = $("hud-hazard-text");
+  private readonly hazardDist = $("hud-hazard-dist");
+  private readonly hazardLanes = [...document.querySelectorAll<HTMLElement>("#hud-hazard .hazard-lanes i")];
+  private readonly flat = $("hud-flat");
+  private readonly heli = $("hud-heli");
+  private readonly mute = $("btn-mute");
 
-  constructor(onStart: () => void, onGarage: () => void) {
+  constructor(onStart: () => void, onGarage: () => void, onMute: () => void) {
+    this.mute.addEventListener("click", onMute);
     $("btn-start").addEventListener("click", onStart);
     $("btn-restart").addEventListener("click", onStart);
     $("btn-garage").addEventListener("click", onGarage);
@@ -125,6 +135,23 @@ export class Hud {
     this.comboFill.style.width = `${v.comboLeft * 100}%`;
   }
 
+  /** Warning for the next roadblock / spike strip, with its lanes (red = blocked). */
+  updateHazards(w: HazardWarning | null, flatTyres: boolean, heli: boolean): void {
+    this.hazard.classList.toggle("hidden", !w);
+    if (w) {
+      this.hazard.dataset.kind = w.kind;
+      this.hazardText.textContent = w.kind === "roadblock" ? "ROADBLOCK" : "SPIKES";
+      this.hazardDist.textContent = `${Math.round(w.distance)} m`;
+      this.hazardLanes.forEach((el, i) => el.classList.toggle("on", w.lanes[i]));
+    }
+    this.flat.classList.toggle("hidden", !flatTyres);
+    this.heli.classList.toggle("hidden", !heli);
+  }
+
+  setMuted(muted: boolean): void {
+    this.mute.textContent = muted ? "🔇" : "🔊";
+  }
+
   popup(text: string, kind: PopupKind): void {
     const el = document.createElement("div");
     el.className = `popup ${kind}`;
@@ -140,6 +167,9 @@ export class Hud {
     this.warn.classList.add("hidden");
     this.mult.classList.add("hidden");
     this.evade.classList.add("hidden");
+    this.hazard.classList.add("hidden");
+    this.flat.classList.add("hidden");
+    this.heli.classList.add("hidden");
     this.siren.style.opacity = "0";
   }
 
@@ -153,6 +183,7 @@ export class Hud {
     $("crash-nearmiss").textContent = `${stats.nearMisses} (best combo ${stats.bestCombo})`;
     $("crash-mult").textContent = `x${stats.bestMultiplier}`;
     $("crash-police").textContent = `${stats.takedowns} · ${stats.escapes}`;
+    $("crash-roadblocks").textContent = String(stats.roadblocks);
     $("crash-heat").textContent = "★".repeat(stats.maxLevel);
     $("crash-best").classList.toggle("hidden", !isBest);
     $("crash-cash").textContent = money(earned);
