@@ -28,6 +28,15 @@ export class Sound {
   private muted: boolean; // the player's toggle
   private forced = false; // the portal asks for silence (its own mute setting)
   private adPlaying = false;
+  private resumeTriedAt = 0; // when a gesture last tried to resume a stopped context
+  /** recent audio events, for the ?debug overlay */
+  readonly log: string[] = [];
+
+  private note(msg: string): void {
+    const t = (performance.now() / 1000).toFixed(1);
+    this.log.push(`${t}s ${msg}`);
+    if (this.log.length > 6) this.log.shift();
+  }
 
   constructor(muted: boolean) {
     this.muted = muted;
@@ -38,9 +47,16 @@ export class Sound {
     });
   }
 
-  /** for tests: "none" before the first gesture, else the AudioContext state */
+  /** test-only: stop the context the way an iOS interruption does */
+  interruptForTest(): void {
+    void this.ctx?.suspend();
+  }
+
+  /** for tests: context state, master volume and what is silencing it */
   get state(): string {
-    return this.ctx ? this.ctx.state : "none";
+    if (!this.ctx) return "none";
+    return `${this.ctx.state} master=${this.master.gain.value.toFixed(2)} engine=${this.engGain.gain.value.toFixed(3)}` +
+      ` muted=${this.muted} forced=${this.forced} ad=${this.adPlaying}`;
   }
 
   private get silent(): boolean {
@@ -69,14 +85,33 @@ export class Sound {
 
   /** Create or resume the audio graph; call from a click/key handler. */
   unlock(): void {
-    if (this.ctx) {
-      // "suspended", or "interrupted" on iOS after a call or backgrounding: only a gesture can resume it
-      if (this.ctx.state !== "running" && !document.hidden) {
-        void this.ctx.resume();
-        this.kick(this.ctx);
-      }
+    if (document.hidden) return;
+    const ctx = this.ctx;
+    if (ctx && ctx.state === "running") {
+      this.resumeTriedAt = 0;
       return;
     }
+    if (ctx && ctx.state !== "closed") {
+      // "suspended", or "interrupted" on iOS (an ad's video, a call, another app's
+      // audio). Try to resume first; if a resume from an earlier gesture still
+      // hasn't worked, iOS can leave the context stuck for good: replace it.
+      const stuck = this.resumeTriedAt > 0 && performance.now() - this.resumeTriedAt > 500;
+      if (!stuck) {
+        if (!this.resumeTriedAt) this.resumeTriedAt = performance.now();
+        this.note(`resume from ${ctx.state}`);
+        void ctx.resume().catch((e) => this.note(`resume failed: ${e}`));
+        this.kick(ctx);
+        return;
+      }
+      this.note(`stuck ${ctx.state}: new context`);
+      void ctx.close().catch(() => {});
+    }
+    this.resumeTriedAt = 0;
+    this.open();
+  }
+
+  /** Build a fresh context and the whole graph (inside a user gesture). */
+  private open(): void {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     // iOS 17+: play through the ring/silent switch like a game or video, not like a notification
@@ -89,6 +124,8 @@ export class Sound {
       }
     }
     const ctx = (this.ctx = new Ctx());
+    ctx.onstatechange = () => this.note(`state ${ctx.state}`);
+    this.note(`opened (${ctx.state})`);
     if (ctx.state !== "running") void ctx.resume();
     this.kick(ctx);
     this.master = ctx.createGain();

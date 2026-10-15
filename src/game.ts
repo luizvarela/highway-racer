@@ -200,6 +200,9 @@ export class Game {
       get hazards() { return game.hazards.snapshot(); },
       get portal() { return game.portal.name; },
       get audio() { return game.sound.state; },
+      get audioLog() { return game.sound.log.join(" | "); },
+      /** test-only: suspend audio like an iOS interruption */
+      interruptAudio() { game.sound.interruptForTest(); },
       get adBusy() { return game.adBusy; },
       get playSeconds() { return game.playSeconds; },
       /** test-only: pretend this much gameplay happened this session (ad pacing) */
@@ -220,6 +223,16 @@ export class Game {
         for (let i = 0; i < Math.round(seconds * hz); i++) game.step(1 / hz);
       },
     };
+
+    // ?debug: live audio state in a corner, to diagnose sound on real phones
+    if (new URLSearchParams(location.search).has("debug")) {
+      const box = document.createElement("pre");
+      box.id = "debug-audio";
+      document.body.appendChild(box);
+      setInterval(() => {
+        box.textContent = `audio: ${this.sound.state}\n${this.sound.log.join("\n")}`;
+      }, 300);
+    }
 
     this.renderer.setAnimationLoop(() => this.frame());
   }
