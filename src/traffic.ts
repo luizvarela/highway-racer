@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { KMH, LANE_COUNT, TRAFFIC, laneCenter } from "./config";
+import { KMH, LANE_COUNT, SCORE, TRAFFIC, laneCenter } from "./config";
 import { buildVehicle, spinWheels, type VehicleKind, type VehicleModel } from "./vehicles";
 
 // Pooled traffic. Every vehicle keeps its lane, drives at its own cruise speed
@@ -11,6 +11,7 @@ interface TrafficCar {
   lane: number;
   cruise: number; // m/s
   speed: number; // m/s
+  passed: boolean; // already overtaken by the player (near-miss checked)
 }
 
 export const TRAFFIC_KINDS: { kind: VehicleKind; weight: number; speedKmh: [number, number] }[] = [
@@ -39,6 +40,10 @@ export interface Box {
   halfLength: number;
 }
 
+export interface Obstacle extends Box {
+  speed: number; // m/s along the road
+}
+
 export class Traffic {
   readonly group = new THREE.Group();
   private readonly cars: TrafficCar[] = [];
@@ -53,7 +58,7 @@ export class Traffic {
       model.group.visible = false;
       model.group.userData.speedRange = entry.speedKmh;
       this.group.add(model.group);
-      this.cars.push({ model, active: false, lane: 0, cruise: 0, speed: 0 });
+      this.cars.push({ model, active: false, lane: 0, cruise: 0, speed: 0, passed: false });
     }
   }
 
@@ -101,6 +106,7 @@ export class Traffic {
     car.lane = lane;
     car.cruise = rand(lo, hi) * KMH;
     car.speed = car.cruise;
+    car.passed = false;
     car.model.group.position.set(laneCenter(lane), 0, z);
     car.model.group.visible = true;
     return true;
@@ -136,6 +142,33 @@ export class Traffic {
 
     const target = Math.min(TRAFFIC.maxCount, TRAFFIC.baseCount + distanceKm * TRAFFIC.countPerKm);
     if (this.activeCount < target) this.trySpawn(-rand(TRAFFIC.spawnMin, TRAFFIC.spawnMax));
+  }
+
+  /** Active vehicles as collision boxes, for the police to steer around. */
+  obstacles(): Obstacle[] {
+    const out: Obstacle[] = [];
+    for (const c of this.cars) {
+      if (!c.active) continue;
+      const p = c.model.group.position;
+      out.push({ x: p.x, z: p.z, halfWidth: c.model.size.width / 2, halfLength: c.model.size.length / 2, speed: c.speed });
+    }
+    return out;
+  }
+
+  /**
+   * Counts vehicles the player just overtook with less than SCORE.nearMissGap
+   * of side clearance. Call once per frame after update(); each vehicle counts
+   * at most once, when its centre passes the player's.
+   */
+  nearMisses(playerX: number, playerHalfWidth: number): number {
+    let n = 0;
+    for (const c of this.cars) {
+      if (!c.active || c.passed || c.model.group.position.z < 0) continue;
+      c.passed = true;
+      const gap = Math.abs(c.model.group.position.x - playerX) - c.model.size.width / 2 - playerHalfWidth;
+      if (gap > 0 && gap < SCORE.nearMissGap) n++;
+    }
+    return n;
   }
 
   /** Returns the x-offset sign of the first vehicle overlapping the box, or 0. */

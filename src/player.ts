@@ -82,6 +82,19 @@ export class Player {
     this.speed *= 0.45;
   }
 
+  /** Busted: the car coasts to a stop without spinning. */
+  pullOver(): void {
+    this.crashed = true;
+    this.crashSpin = 0;
+    this.lateralVel = 0;
+  }
+
+  /** Side contact with a police car: shoved away from it and scrubs speed. */
+  bump(side: number): void {
+    this.lateralVel = side * 6;
+    this.speed = Math.max(PLAYER.minSpeedKmh * KMH, this.speed * 0.93);
+  }
+
   update(dt: number, input: InputState): void {
     const max = PLAYER.maxSpeedKmh * KMH;
     const min = PLAYER.minSpeedKmh * KMH;

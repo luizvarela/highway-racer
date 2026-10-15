@@ -45,3 +45,37 @@ export const TRAFFIC = {
 
 export const laneCenter = (lane: number): number =>
   -ROAD_WIDTH / 2 + LANE_WIDTH * (lane + 0.5);
+
+// Getaway: heat (0..100) sets the wanted level, which sets how many police
+// chase you and how fast they go. Drop below their speed and they close in.
+export const HEAT = {
+  perSecond: 0.35, // the chase escalates on its own
+  perSecondFast: 0.35, // extra while above fastKmh
+  fastKmh: 160,
+  nearMiss: 4,
+  takedown: 6,
+  perLevel: 20, // level = 1 + floor(heat / perLevel), max 5
+};
+
+export const POLICE = {
+  firstSpawnDelay: 4, // seconds of head start before the first cop shows up
+  respawnDelay: [3, 6] as [number, number],
+  spawnBehind: 100, // metres behind the player
+  loseDistance: 160, // a cop this far behind has lost you
+  // per wanted level 1..5
+  maxSpeedKmh: [150, 165, 180, 195, 210],
+  count: [1, 1, 2, 3, 4],
+  steerSpeed: 8, // lateral m/s
+  reaction: [0.55, 1.0] as [number, number], // seconds of look-ahead (rookies look less far)
+  bustRange: { dx: 3.6, dz: 9 },
+  bustFillSeconds: 2.2,
+  bustDrainSeconds: 1.5,
+};
+
+export const SCORE = {
+  nearMiss: 60, // times the combo multiplier
+  nearMissGap: 1.1, // metres of side clearance that counts as a near miss
+  comboWindow: 3, // seconds to chain the next near miss
+  takedown: 500,
+  copLost: 300,
+};

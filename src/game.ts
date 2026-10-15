@@ -3,11 +3,12 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { FOG_FAR, FOG_NEAR, HIGH_SPEED_KMH, KMH, PLAYER } from "./config";
+import { FOG_FAR, FOG_NEAR, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { Skyline, SpeedLines } from "./environment";
 import { Hud, type RunStats } from "./hud";
 import { Input } from "./input";
 import { Player } from "./player";
+import { Police } from "./police";
 import { Road } from "./road";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
 import { loadVehicles } from "./vehicles";
@@ -18,6 +19,13 @@ const NIGHT = 0x1a0b2e;
 const BEST_KEY = "highway-racer.best";
 const CRASH_OVERLAY_DELAY = 1.1; // seconds of crash animation before the results panel
 const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
+
+function newStats(): RunStats {
+  return {
+    score: 0, distanceKm: 0, topSpeedKmh: 0, highSpeedSeconds: 0,
+    nearMisses: 0, bestCombo: 0, takedowns: 0, copsLost: 0, maxLevel: 1, end: "crashed",
+  };
+}
 
 function loadBest(): number {
   try {
@@ -52,14 +60,19 @@ export class Game {
   private readonly clock = new THREE.Clock();
 
   private state: State = "loading";
-  private stats: RunStats = { score: 0, distanceKm: 0, topSpeedKmh: 0, highSpeedSeconds: 0 };
+  private readonly police = new Police();
+  private stats: RunStats = newStats();
   private highSpeedStreak = 0;
+  private heat = 0;
+  private combo = 0;
+  private comboTimer = 0;
   private crashTimer = 0;
   private shake = 0;
   private best = loadBest();
+  private manualTime = false; // tests drive the simulation in fixed steps
 
   static async create(container: HTMLElement): Promise<Game> {
-    await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), "sedan-sports"], MODELS_URL);
+    await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), "sedan-sports", "police"], MODELS_URL);
     return new Game(container);
   }
 
@@ -91,7 +104,7 @@ export class Game {
 
     this.traffic = new Traffic();
     this.player = new Player();
-    this.scene.add(this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.speedLines.object);
+    this.scene.add(this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object);
 
     // bloom makes every emissive surface (lines, lamps, lights, windows) glow.
     // The composer renders off-screen, where the canvas' antialias flag does not
@@ -123,6 +136,16 @@ export class Game {
       get x() { return game.player.x; },
       get stats() { return { ...game.stats }; },
       get trafficCount() { return game.traffic.activeCount; },
+      get heat() { return game.heat; },
+      get level() { return game.level; },
+      get bust() { return game.police.bust; },
+      get cops() { return game.police.snapshot(); },
+      get obstacles() { return game.traffic.obstacles(); },
+      /** test-only: stop real-time simulation and advance it in fixed 1/60 s steps */
+      advance(seconds: number) {
+        game.manualTime = true;
+        for (let i = 0; i < Math.round(seconds * 60); i++) game.simulate(1 / 60);
+      },
     };
 
     this.renderer.setAnimationLoop(() => this.frame());
@@ -139,7 +162,11 @@ export class Game {
   private reset(): void {
     this.player.reset();
     this.traffic.reset();
-    this.stats = { score: 0, distanceKm: 0, topSpeedKmh: 0, highSpeedSeconds: 0 };
+    this.police.reset();
+    this.stats = newStats();
+    this.heat = 0;
+    this.combo = 0;
+    this.comboTimer = 0;
     this.highSpeedStreak = 0;
     this.crashTimer = 0;
     this.shake = 0;
@@ -165,6 +192,11 @@ export class Game {
 
   private frame(): void {
     const dt = Math.min(this.clock.getDelta(), 1 / 20);
+    if (!this.manualTime) this.simulate(dt);
+    this.composer.render();
+  }
+
+  private simulate(dt: number): void {
     const input = this.input.read(dt);
     let dz = 0;
 
@@ -173,6 +205,15 @@ export class Game {
       dz = this.player.speed * dt;
       this.road.update(dz);
       this.traffic.update(dt, this.player.speed, this.stats.distanceKm);
+      const p = this.player;
+      const ev = this.police.update(
+        dt,
+        { x: p.x, speed: p.speed, halfWidth: p.halfWidth, halfLength: p.halfLength },
+        this.level,
+        this.traffic.obstacles(),
+        this.state === "running",
+      );
+      if (this.state === "running") this.policeEvents(ev);
     }
 
     if (this.state === "running") {
@@ -190,11 +231,43 @@ export class Game {
       }
     }
 
-    if (this.state !== "ready") this.hud.update(this.stats, this.player.speedKmh, this.highSpeedStreak);
+    if (this.state !== "ready") {
+      this.hud.update(this.stats, this.player.speedKmh, this.highSpeedStreak);
+      if (this.state === "running") this.hud.updateChase(this.heat, this.level, this.police.bust, this.police.nearest, this.combo, this.comboTimer);
+    }
     const speedT = this.speedT();
     this.speedLines.update(speedT, dz, this.player.x);
     this.updateCamera(dt, speedT);
-    this.composer.render();
+  }
+
+  /** Wanted level 1..5 from heat. */
+  private get level(): number {
+    return Math.min(5, 1 + Math.floor(this.heat / HEAT.perLevel));
+  }
+
+  private policeEvents(ev: { takedowns: number; lost: number; bumpSide: number }): void {
+    if (ev.takedowns) {
+      this.stats.takedowns += ev.takedowns;
+      this.stats.score += SCORE.takedown * ev.takedowns;
+      this.heat += HEAT.takedown * ev.takedowns;
+      this.hud.popup(`TAKEDOWN +${SCORE.takedown * ev.takedowns}`, "takedown");
+    }
+    if (ev.lost) {
+      this.stats.copsLost += ev.lost;
+      this.stats.score += SCORE.copLost * ev.lost;
+      this.hud.popup(`COP LOST +${SCORE.copLost * ev.lost}`, "lost");
+    }
+    if (ev.bumpSide) {
+      this.player.bump(ev.bumpSide);
+      this.shake = Math.max(this.shake, 0.25);
+    }
+  }
+
+  private end(reason: RunStats["end"]): void {
+    this.stats.end = reason;
+    this.state = "crashed";
+    this.highSpeedStreak = 0;
+    this.combo = 0;
   }
 
   private speedT(): number {
@@ -220,12 +293,32 @@ export class Game {
       this.highSpeedStreak = 0;
     }
 
+    // heat builds on its own and faster when driving flat out
+    this.heat += dt * (HEAT.perSecond + (kmh >= HEAT.fastKmh ? HEAT.perSecondFast : 0));
+
+    // near misses chain into a combo while they keep coming
+    this.comboTimer -= dt;
+    if (this.comboTimer <= 0) this.combo = 0;
+    const misses = this.traffic.nearMisses(p.x, p.halfWidth);
+    for (let i = 0; i < misses; i++) {
+      this.combo++;
+      this.comboTimer = SCORE.comboWindow;
+      this.stats.nearMisses++;
+      this.stats.bestCombo = Math.max(this.stats.bestCombo, this.combo);
+      this.stats.score += SCORE.nearMiss * this.combo;
+      this.heat += HEAT.nearMiss;
+      this.hud.popup(`NEAR MISS${this.combo > 1 ? ` x${this.combo}` : ""} +${SCORE.nearMiss * this.combo}`, "near");
+    }
+    this.stats.maxLevel = Math.max(this.stats.maxLevel, this.level);
+
     const side = this.traffic.collide({ x: p.x, z: 0, halfWidth: p.halfWidth * 0.95, halfLength: p.halfLength * 0.95 });
     if (side !== 0) {
       p.crash(side);
-      this.state = "crashed";
       this.shake = 0.6;
-      this.highSpeedStreak = 0;
+      this.end("crashed");
+    } else if (this.police.bust >= 1) {
+      p.pullOver();
+      this.end("busted");
     }
   }
 
@@ -233,9 +326,12 @@ export class Game {
     const p = this.player;
     const cam = this.camera;
 
+    // pull back when a cop is on our tail, so it is in view behind the car
+    const cop = this.police.nearest;
+    const chase = cop === null ? 0 : THREE.MathUtils.clamp(1 - (cop - 6) / 30, 0, 1);
     const targetX = p.x * 0.75;
-    const camZ = 10 + speedT * 1.5;
-    const camY = 7.2 - speedT * 0.8;
+    const camZ = 10 + speedT * 1.5 + chase * 5;
+    const camY = 7.2 - speedT * 0.8 + chase * 1.3;
     const k = 1 - Math.exp(-6 * dt);
     cam.position.x += (targetX - cam.position.x) * k;
     cam.position.y += (camY - cam.position.y) * k;
