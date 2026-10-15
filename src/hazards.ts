@@ -135,14 +135,37 @@ export class Hazards {
     h.group.visible = false;
   }
 
-  /** x offset of a parked cop: pushed away from the open lane so the gap stays a full lane wide. */
-  private copX(lane: number, open: number, length: number): number {
-    const overhang = (length - LANE_WIDTH) / 2 + 0.15;
-    let x = laneCenter(lane);
-    if (lane === open - 1) x -= overhang;
-    if (lane === open + 1) x += overhang;
-    const limit = RAIL_X - length / 2;
-    return THREE.MathUtils.clamp(x, -limit, limit);
+  /**
+   * Park one cop per blocked lane. The two beside the gap line up with its
+   * edges (HAZARDS.roadblock.gap wide); one that would poke through the rail
+   * parks lengthwise instead. Others sit sideways in their lane.
+   */
+  private parkRoadblock(h: Hazard, open: number): void {
+    const gapLeft = Math.max(-RAIL_X, laneCenter(open) - HAZARDS.roadblock.gap / 2);
+    const gapRight = Math.min(RAIL_X, laneCenter(open) + HAZARDS.roadblock.gap / 2);
+    h.parts.forEach((p, lane) => {
+      p.visible = h.lanes[lane];
+      const { width, length } = p.userData.size as { width: number; length: number };
+      let x = laneCenter(lane);
+      let sideways = true;
+      const side = lane < open ? -1 : 1;
+      if (Math.abs(lane - open) === 1) {
+        const edge = side < 0 ? gapLeft : gapRight;
+        x = edge + side * (length / 2);
+        if (Math.abs(x) + length / 2 > RAIL_X) {
+          sideways = false;
+          x = edge + side * (width / 2);
+        }
+      }
+      if (sideways) x = THREE.MathUtils.clamp(x, -(RAIL_X - length / 2), RAIL_X - length / 2);
+      const tilt = lane % 2 ? 0.08 : -0.08;
+      p.position.set(x, 0, lane % 2 ? 0.6 : -0.6);
+      p.rotation.y = sideways ? tilt : Math.PI / 2 + tilt * 2; // the model inside is already turned sideways
+      // collision box in road axes; a lengthwise car also closes the slot between it and the rail
+      p.userData.box = sideways
+        ? { x, hx: length / 2, hz: width / 2 }
+        : { x: (x - (side * width) / 2 + side * RAIL_X) / 2, hx: (RAIL_X - Math.abs(x - (side * width) / 2)) / 2, hz: length / 2 };
+    });
   }
 
   /** Place a hazard `distance` metres ahead (the timers use HAZARDS.spawnAhead; tests call this directly). */
@@ -155,12 +178,7 @@ export class Hazards {
     if (kind === "roadblock") {
       const open = Math.floor(Math.random() * LANE_COUNT);
       h.lanes = Array.from({ length: LANE_COUNT }, (_, l) => l !== open);
-      h.parts.forEach((p, lane) => {
-        p.visible = h.lanes[lane];
-        const len = (p.userData.size as { length: number }).length;
-        p.position.set(this.copX(lane, open, len), 0, (lane % 2 ? 0.6 : -0.6));
-        p.rotation.y = lane % 2 ? 0.08 : -0.08;
-      });
+      this.parkRoadblock(h, open);
     } else {
       // the strip goes where the player is now, sometimes across a neighbour lane too
       h.lanes = Array.from({ length: LANE_COUNT }, (_, l) => l === playerLane);
@@ -223,8 +241,8 @@ export class Hazards {
       if (h.kind === "spikes") {
         out.push({ x: p.position.x, z: h.z, halfWidth: LANE_WIDTH / 2, halfLength: STRIP_DEPTH / 2 });
       } else {
-        const size = p.userData.size as { width: number; length: number };
-        out.push({ x: p.position.x, z: h.z + p.position.z, halfWidth: size.length / 2, halfLength: size.width / 2 });
+        const box = p.userData.box as { x: number; hx: number; hz: number };
+        out.push({ x: box.x, z: h.z + p.position.z, halfWidth: box.hx, halfLength: box.hz });
       }
     });
     return out;

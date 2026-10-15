@@ -114,6 +114,7 @@ export const HAZARDS = {
   roadblock: {
     minLevel: 3,
     interval: [20, 34] as [number, number],
+    gap: 5.2, // metres of open road through the block (a lane is 3.6)
     bonus: 800, // points for getting through the gap
     combo: 2,
   },

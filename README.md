@@ -54,6 +54,7 @@ shows the distance and the lanes (red = blocked).
   speed is capped at 125 km/h for 5 s and the car pulls side to side. Cops
   that drive over a strip crash (takedown).
 - **Roadblocks** (3+ stars): police cars parked across every lane but one,
+  leaving a 5.2 m gap (`HAZARDS.roadblock.gap`; a lane is 3.6 m),
   with traffic queuing behind them. Hitting one ends the run. Getting through
   the gap pays 800 and adds 2 to the combo.
 - **Helicopter** (5 stars): flies in and keeps a searchlight on you. While it
