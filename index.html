@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Highway Racer Prototype</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud" class="hidden">
+      <div class="hud-left">
+        <div class="label">SCORE</div>
+        <div id="hud-score" class="value">0</div>
+        <div class="label small">BEST <span id="hud-best">0</span></div>
+      </div>
+      <div class="hud-right">
+        <div class="label">SPEED</div>
+        <div class="value"><span id="hud-speed">0</span><span class="unit">km/h</span></div>
+        <div class="label">DISTANCE</div>
+        <div class="value small"><span id="hud-distance">0.00</span><span class="unit">km</span></div>
+        <div id="hud-highspeed" class="badge hidden">HIGH SPEED <span id="hud-highspeed-time">0.0</span>s</div>
+      </div>
+    </div>
+
+    <div id="overlay-start" class="overlay">
+      <h1>HIGHWAY RACER</h1>
+      <p class="sub">Prototype · step 1 · core loop</p>
+      <div class="controls">
+        <div><kbd>↑</kbd>/<kbd>W</kbd> accelerate</div>
+        <div><kbd>↓</kbd>/<kbd>S</kbd> brake</div>
+        <div><kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> steer</div>
+        <div class="touch-hint">Touch: hold left / right side to steer (auto-throttle)</div>
+      </div>
+      <button id="btn-start" class="btn">PRESS SPACE OR TAP TO DRIVE</button>
+    </div>
+
+    <div id="overlay-crash" class="overlay hidden">
+      <h1>CRASHED</h1>
+      <div class="stats">
+        <div><span>Score</span><b id="crash-score">0</b></div>
+        <div><span>Distance</span><b id="crash-distance">0.00 km</b></div>
+        <div><span>Top speed</span><b id="crash-top">0 km/h</b></div>
+        <div><span>Above 100 km/h</span><b id="crash-highspeed">0.0 s</b></div>
+      </div>
+      <div id="crash-best" class="new-best hidden">NEW BEST!</div>
+      <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
