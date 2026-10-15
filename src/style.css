@@ -881,3 +881,76 @@ body.driving #btn-mute {
     transform: rotate(360deg);
   }
 }
+
+/* ---- touch controls (touch devices, while driving) ---- */
+
+#touch-controls {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  pointer-events: none;
+  z-index: 4;
+}
+
+body.touch.driving #touch-controls {
+  display: flex;
+}
+
+#touch-steer {
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(10, 12, 20, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 34px;
+  font-weight: 900;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.touch-btn.on {
+  background: rgba(0, 229, 255, 0.4);
+  border-color: #7ff6ff;
+}
+
+#touch-brake {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  border-color: rgba(255, 75, 95, 0.7);
+  pointer-events: auto;
+}
+
+#touch-brake.on {
+  background: rgba(255, 43, 79, 0.55);
+  border-color: #ff7a8a;
+}
+
+@media (max-width: 380px) {
+  .touch-btn {
+    width: 72px;
+    height: 72px;
+  }
+  #touch-brake {
+    width: 92px;
+    height: 92px;
+  }
+}

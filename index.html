@@ -62,7 +62,7 @@
         <div><kbd>↓</kbd>/<kbd>S</kbd> brake</div>
         <div><kbd>←</kbd><kbd>→</kbd>/<kbd>A</kbd><kbd>D</kbd> steer</div>
         <div><kbd>M</kbd> sound on/off</div>
-        <div class="touch-hint">Touch: hold left / right side to steer (auto-throttle)</div>
+        <div class="touch-hint">Touch: steer with ◀ ▶ bottom left, brake bottom right. The car accelerates by itself.</div>
       </div>
       <button id="btn-start" class="btn">PRESS SPACE OR TAP TO DRIVE</button>
       <div class="menu-row">
@@ -102,6 +102,11 @@
         <button id="btn-double" class="btn btn-reward hidden" title="Watch an ad to double this run's cash"></button>
         <button id="btn-garage-2" class="btn btn-alt">GARAGE</button>
       </div>
+    </div>
+
+    <div id="touch-controls">
+      <div id="touch-steer"><div id="touch-left" class="touch-btn">◀</div><div id="touch-right" class="touch-btn">▶</div></div>
+      <div id="touch-brake" class="touch-btn">BRAKE</div>
     </div>
 
     <div id="ad-block" class="hidden"><div class="spinner"></div></div>

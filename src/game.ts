@@ -139,7 +139,7 @@ export class Game {
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
-    this.input = new Input(this.renderer.domElement);
+    this.input = new Input();
     this.input.onAction = () => this.handleAction();
     this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute(), () => void this.doubleCash());
     this.hud.setMuted(this.save.muted);
@@ -500,6 +500,7 @@ export class Game {
 
   private end(reason: RunStats["end"]): void {
     this.portal.gameplayStop();
+    this.input.release();
     this.stats.end = reason;
     this.state = "crashed";
     document.body.classList.remove("driving");

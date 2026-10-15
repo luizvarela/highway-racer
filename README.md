@@ -10,7 +10,7 @@ npm run build    # typecheck + production build in dist/
 ```
 
 Controls: ↑/W accelerate, ↓/S brake, ←→/A D steer, Space start/restart, M sound.
-Touch: hold the left/right half of the screen to steer (auto-throttle), both halves to brake.
+Touch: on-screen ◀ ▶ pad (bottom left, slide between them) to steer and a BRAKE pedal (bottom right); the car accelerates on its own.
 
 ## Getaway rules
 
