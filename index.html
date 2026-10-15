@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Highway Racer Prototype</title>
-    <script type="module" crossorigin src="/highway-racer/assets/index-pzNnHx8Y.js"></script>
-    <link rel="stylesheet" crossorigin href="/highway-racer/assets/index-1fRhhtWf.css">
+    <title>Neon Getaway</title>
+    <meta name="description" content="Neon night getaway racer: outrun the police, weave through traffic, run the roadblocks." />
+    <script type="module" crossorigin src="/highway-racer/assets/index-CLPWbrrP.js"></script>
+    <link rel="stylesheet" crossorigin href="/highway-racer/assets/index-B7CI0nel.css">
   </head>
   <body>
     <div id="app"></div>
@@ -54,8 +55,8 @@
     </div>
 
     <div id="overlay-start" class="overlay">
-      <h1>HIGHWAY RACER</h1>
-      <p class="sub">Prototype · getaway</p>
+      <h1>NEON GETAWAY</h1>
+      <p class="sub">Outrun the night</p>
       <p class="pitch">The police are on your tail. Stay faster than them to escape, weave close past traffic to build your multiplier, and make them crash.</p>
       <div class="controls">
         <div><kbd>↑</kbd>/<kbd>W</kbd> accelerate</div>
@@ -96,12 +97,15 @@
         </div>
       </div>
       <div id="crash-best" class="new-best hidden">NEW BEST!</div>
-      <div class="earned">+<b id="crash-cash">$0</b> cash · total <span id="crash-total">$0</span></div>
+      <div class="earned">+<b id="crash-cash">$0</b> cash<span id="crash-doubled" class="hidden"> (doubled)</span> · total <span id="crash-total">$0</span></div>
       <div class="menu-row">
         <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>
+        <button id="btn-double" class="btn btn-reward hidden" title="Watch an ad to double this run's cash"></button>
         <button id="btn-garage-2" class="btn btn-alt">GARAGE</button>
       </div>
     </div>
+
+    <div id="ad-block" class="hidden"><div class="spinner"></div></div>
 
     <button id="btn-mute" aria-label="Toggle sound" title="Sound (M)">🔊</button>
 
