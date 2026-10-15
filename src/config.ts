@@ -123,3 +123,11 @@ export const HAZARDS = {
     evadeRate: 0.5, // escape progress fills this much slower under the searchlight
   },
 };
+
+// Midgame ads (portal builds only): at the death transition, never before
+// this much gameplay in the session and not more often than this. The
+// portal SDK enforces its own limit too (CrazyGames: one per 3 minutes).
+export const ADS = {
+  firstAfterSeconds: 90,
+  everySeconds: 180,
+};

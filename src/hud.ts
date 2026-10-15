@@ -69,7 +69,8 @@ export class Hud {
   private readonly heli = $("hud-heli");
   private readonly mute = $("btn-mute");
 
-  constructor(onStart: () => void, onGarage: () => void, onMute: () => void) {
+  constructor(onStart: () => void, onGarage: () => void, onMute: () => void, onDouble: () => void) {
+    $("btn-double").addEventListener("click", onDouble);
     this.mute.addEventListener("click", onMute);
     $("btn-start").addEventListener("click", onStart);
     $("btn-restart").addEventListener("click", onStart);
@@ -173,7 +174,30 @@ export class Hud {
     this.siren.style.opacity = "0";
   }
 
-  showCrash(stats: RunStats, isBest: boolean, earned: number, cash: number): void {
+  /** Block all input while an ad loads or plays. */
+  setAdBusy(on: boolean): void {
+    $("ad-block").classList.toggle("hidden", !on);
+  }
+
+  cashDoubled(earned: number, cash: number): void {
+    $("crash-cash").textContent = money(earned);
+    $("crash-total").textContent = money(cash);
+    $("btn-double").classList.add("hidden");
+    $("crash-doubled").classList.remove("hidden");
+  }
+
+  rewardUnavailable(): void {
+    const b = $("btn-double") as HTMLButtonElement;
+    b.disabled = true;
+    b.textContent = "NO AD RIGHT NOW";
+  }
+
+  showCrash(stats: RunStats, isBest: boolean, earned: number, cash: number, canDouble: boolean): void {
+    const dbl = $("btn-double") as HTMLButtonElement;
+    dbl.classList.toggle("hidden", !canDouble);
+    dbl.disabled = false;
+    dbl.innerHTML = '<span class="ad-icon">▶</span> 2× CASH';
+    $("crash-doubled").classList.add("hidden");
     this.clearChase();
     $("crash-title").textContent = stats.end === "busted" ? "BUSTED" : "CRASHED";
     $("crash-score").textContent = Math.floor(stats.score).toLocaleString("en-US");

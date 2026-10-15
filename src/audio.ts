@@ -25,7 +25,9 @@ export class Sound {
   private sirenOsc!: OscillatorNode;
   private sirenGain!: GainNode;
   private heliGain!: GainNode;
-  private muted: boolean;
+  private muted: boolean; // the player's toggle
+  private forced = false; // the portal asks for silence (its own mute setting)
+  private adPlaying = false;
 
   constructor(muted: boolean) {
     this.muted = muted;
@@ -36,26 +38,42 @@ export class Sound {
     });
   }
 
-  get isMuted(): boolean {
-    return this.muted;
+  private get silent(): boolean {
+    return this.muted || this.forced || this.adPlaying;
+  }
+
+  private applyVolume(): void {
+    if (this.ctx) this.master.gain.setTargetAtTime(this.silent ? 0 : 0.8, this.ctx.currentTime, 0.05);
   }
 
   setMuted(m: boolean): void {
     this.muted = m;
-    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.05);
+    this.applyVolume();
+  }
+
+  setForcedMute(m: boolean): void {
+    this.forced = m;
+    this.applyVolume();
+  }
+
+  /** silence everything while an ad plays */
+  setAdPlaying(on: boolean): void {
+    this.adPlaying = on;
+    this.applyVolume();
   }
 
   /** Create or resume the audio graph; call from a click/key handler. */
   unlock(): void {
     if (this.ctx) {
-      if (this.ctx.state === "suspended" && !document.hidden) void this.ctx.resume();
+      // "suspended", or "interrupted" on iOS after a call or backgrounding: only a gesture can resume it
+      if (this.ctx.state !== "running" && !document.hidden) void this.ctx.resume();
       return;
     }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = (this.ctx = new Ctx());
     this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.8;
+    this.master.gain.value = this.silent ? 0 : 0.8;
     const comp = ctx.createDynamicsCompressor();
     this.master.connect(comp).connect(ctx.destination);
 

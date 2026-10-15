@@ -22,7 +22,9 @@ function fresh(): SaveData {
   return { v: 1, best: 0, cash: 0, selected: CARS[0].id, cars: { [CARS[0].id]: noUpgrades() }, muted: false };
 }
 
-function read(key: string): string | null {
+export type SaveStore = Pick<Storage, "getItem" | "setItem">;
+
+function localRead(key: string): string | null {
   try {
     return localStorage.getItem(key);
   } catch {
@@ -30,11 +32,21 @@ function read(key: string): string | null {
   }
 }
 
-/** Load and sanitise: a corrupt or hand-edited save must never break the game. */
-export function loadSave(): SaveData {
+/**
+ * Load and sanitise: a corrupt or hand-edited save must never break the game.
+ * Reads the portal's store first (cloud save), then this browser's
+ * localStorage, so progress made before a portal build carries over.
+ */
+export function loadSave(store: SaveStore): SaveData {
   const data = fresh();
   try {
-    const raw = JSON.parse(read(KEY) ?? "null") as Partial<SaveData> | null;
+    let text: string | null = null;
+    try {
+      text = store.getItem(KEY);
+    } catch {
+      /* store unavailable */
+    }
+    const raw = JSON.parse(text ?? localRead(KEY) ?? "null") as Partial<SaveData> | null;
     if (raw && typeof raw === "object") {
       data.best = Math.max(0, Math.floor(Number(raw.best) || 0));
       data.cash = Math.max(0, Math.floor(Number(raw.cash) || 0));
@@ -48,7 +60,7 @@ export function loadSave(): SaveData {
       data.muted = raw.muted === true;
       if (typeof raw.selected === "string" && data.cars[raw.selected]) data.selected = raw.selected;
     } else {
-      data.best = Math.max(0, Math.floor(Number(read(LEGACY_BEST_KEY)) || 0));
+      data.best = Math.max(0, Math.floor(Number(localRead(LEGACY_BEST_KEY)) || 0));
     }
   } catch {
     /* unreadable save: start fresh */
@@ -56,10 +68,10 @@ export function loadSave(): SaveData {
   return data;
 }
 
-export function writeSave(data: SaveData): void {
+export function writeSave(store: SaveStore, data: SaveData): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(data));
-  } catch {
-    /* storage unavailable: progress just isn't persisted */
+    store.setItem(KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn("progress not saved", e);
   }
 }

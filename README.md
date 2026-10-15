@@ -95,7 +95,37 @@ start or results screen) on cars and upgrades.
   portal cloud save). Car names are fictional on purpose; bodies are Kenney CC0
   models until the hero cars arrive.
 
-## Layout
+## Portals (CrazyGames)
+
+The game talks to web portals only through `src/portal.ts`. GitHub Pages and
+local dev use a no-op portal (no ads, localStorage saves).
+
+```bash
+npm run build:crazygames   # dist-crazygames/ + highway-racer-crazygames.zip (relative paths)
+```
+
+The CrazyGames build (or any page opened with `?portal=crazygames`) loads the
+CrazyGames HTML5 SDK v3. If it fails or is disabled on the domain, the game
+runs without a portal. On `localhost` the SDK runs in local mode and shows
+placeholder ads.
+
+- **Events**: loading start/stop around asset loading, gameplay start when a
+  run starts, gameplay stop when it ends. Happytime fires on a new best score,
+  at most once a session.
+- **Midgame ad**: at the crash/bust transition, before the results, after 90 s
+  of gameplay in the session and then at most every 180 s (`ADS` in
+  `src/config.ts`; the SDK also enforces its own 3-minute limit). Input and
+  simulation are blocked behind a spinner; audio is muted only once the ad
+  actually starts.
+- **Rewarded ad**: an optional "▶ 2× CASH" button on the results screen
+  doubles that run's cash, paid only when the ad finishes (never on an error),
+  once per run.
+- **Saves** go through the SDK data module (cloud save for signed-in players).
+  Progress already in localStorage carries over the first time. Turn on
+  *Progress Save* when submitting, or the data module is disabled.
+- The portal's `muteAudio` setting overrides the in-game sound toggle.
+
+
 
 | File | What it does |
 |---|---|

@@ -5,7 +5,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CARS, carById, carStats, cashForScore } from "./cars";
 import { Sound } from "./audio";
-import { ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
+import { ADS, ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { DEBRIS_KINDS, Debris } from "./debris";
 import { Skyline, SpeedLines } from "./environment";
 import { Garage } from "./garage";
@@ -16,7 +16,8 @@ import { Input } from "./input";
 import { Player } from "./player";
 import { Police } from "./police";
 import { Road } from "./road";
-import { loadSave, writeSave } from "./save";
+import type { AdResult, Portal } from "./portal";
+import { loadSave, writeSave, type SaveData } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
 import { loadProps, loadVehicles } from "./vehicles";
@@ -62,7 +63,7 @@ export class Game {
   private evade = 0; // 0..1 progress towards escaping
   private crashTimer = 0;
   private shake = 0;
-  private readonly save = loadSave();
+  private readonly save: SaveData;
   private readonly garage: Garage;
   private garageAngle = 0;
   // showroom light over the parked car; intensity 0 outside the garage so the
@@ -72,16 +73,25 @@ export class Game {
   private readonly hazards: Hazards;
   private readonly heli = new Helicopter();
   private readonly debris: Debris;
-  private readonly sound = new Sound(this.save.muted);
+  private readonly sound: Sound;
+  private adBusy = false; // an ad is being requested or playing: simulation and input on hold
+  private playSeconds = 0; // gameplay this session, for ad pacing
+  private playAtLastAd = -Infinity; // no ad yet: the first one only waits for ADS.firstAfterSeconds
+  private lastEarned = 0;
+  private doubled = false;
+  private celebrated = false;
   private hazardWarned = false; // the warning beep plays once per hazard
 
-  static async create(container: HTMLElement): Promise<Game> {
+  static async create(container: HTMLElement, portal: Portal): Promise<Game> {
     await loadVehicles([...TRAFFIC_KINDS.map((k) => k.kind), ...CARS.map((c) => c.model), "police"], MODELS_URL);
     await loadProps(["cone", ...DEBRIS_KINDS], MODELS_URL); // props are scaled from the loaded sedan
-    return new Game(container);
+    return new Game(container, portal);
   }
 
-  private constructor(container: HTMLElement) {
+  private constructor(container: HTMLElement, private readonly portal: Portal) {
+    this.save = loadSave(portal.storage);
+    this.sound = new Sound(this.save.muted);
+    portal.onForcedMute((m) => this.sound.setForcedMute(m));
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -131,7 +141,7 @@ export class Game {
 
     this.input = new Input(this.renderer.domElement);
     this.input.onAction = () => this.handleAction();
-    this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute());
+    this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute(), () => void this.doubleCash());
     this.hud.setMuted(this.save.muted);
     // browsers only start audio from a user gesture
     const unlock = () => this.sound.unlock();
@@ -144,7 +154,7 @@ export class Game {
     this.garage = new Garage({
       save: this.save,
       preview: (car, stats) => this.player.setCar(car, stats),
-      commit: () => writeSave(this.save),
+      commit: () => writeSave(this.portal.storage, this.save),
       purchased: () => this.sound.buy(),
       drive: () => {
         this.closeGarage();
@@ -179,6 +189,11 @@ export class Game {
       get multiplier() { return game.scoring.multiplier; },
       get evade() { return game.evade; },
       get hazards() { return game.hazards.snapshot(); },
+      get portal() { return game.portal.name; },
+      get adBusy() { return game.adBusy; },
+      get playSeconds() { return game.playSeconds; },
+      /** test-only: pretend this much gameplay happened this session (ad pacing) */
+      setPlaySeconds(v: number) { game.playSeconds = v; },
       get tiresBlown() { return game.player.tiresBlown; },
       get heliWatching() { return game.heli.watching; },
       /** test-only: raise the wanted level */
@@ -200,6 +215,7 @@ export class Game {
   }
 
   private handleAction(): void {
+    if (this.adBusy) return;
     if (this.state === "ready") this.start();
     else if (this.state === "garage") this.garage.driveIfOwned();
     else if (this.state === "crashed" && this.crashTimer >= CRASH_OVERLAY_DELAY) {
@@ -230,10 +246,11 @@ export class Game {
     this.save.muted = !this.save.muted;
     this.sound.setMuted(this.save.muted);
     this.hud.setMuted(this.save.muted);
-    writeSave(this.save);
+    writeSave(this.portal.storage, this.save);
   }
 
   private start(): void {
+    this.portal.gameplayStart();
     this.state = "running";
     document.body.classList.add("driving");
     this.hud.showRunning(this.save.best);
@@ -249,6 +266,7 @@ export class Game {
   }
 
   private openGarage(): void {
+    if (this.adBusy) return;
     if (this.state === "crashed" && this.crashTimer < CRASH_OVERLAY_DELAY) return;
     if (this.state !== "ready" && this.state !== "crashed") return;
     this.reset();
@@ -283,7 +301,7 @@ export class Game {
 
   private frame(): void {
     const dt = Math.min(this.clock.getDelta(), 1 / 20);
-    if (!this.manualTime) this.simulate(dt);
+    if (!this.manualTime && !this.adBusy) this.simulate(dt);
     this.composer.render();
   }
 
@@ -330,13 +348,7 @@ export class Game {
       const before = this.crashTimer;
       this.crashTimer += dt;
       if (before < CRASH_OVERLAY_DELAY && this.crashTimer >= CRASH_OVERLAY_DELAY) {
-        const score = Math.floor(this.stats.score);
-        const isBest = score > this.save.best;
-        if (isBest) this.save.best = score;
-        const earned = cashForScore(score);
-        this.save.cash += earned;
-        writeSave(this.save);
-        this.hud.showCrash(this.stats, isBest, earned, this.save.cash);
+        this.finishRun();
       }
     }
 
@@ -432,7 +444,62 @@ export class Game {
     this.hud.popup(`${label} +${bonus}`, "escape");
   }
 
+  /** Bank the run, maybe show a midgame ad (at the death transition), then the results. */
+  private finishRun(): void {
+    const score = Math.floor(this.stats.score);
+    const previousBest = this.save.best;
+    const isBest = score > previousBest;
+    if (isBest) this.save.best = score;
+    const earned = cashForScore(score);
+    this.save.cash += earned;
+    writeSave(this.portal.storage, this.save);
+    this.lastEarned = earned;
+    this.doubled = false;
+    if (isBest && previousBest > 0 && !this.celebrated) {
+      this.celebrated = true; // once a session keeps it special
+      this.portal.happytime();
+    }
+    const show = () => this.hud.showCrash(this.stats, isBest, earned, this.save.cash, this.portal.hasRewarded && earned > 0);
+    const adDue = this.playSeconds >= ADS.firstAfterSeconds && this.playSeconds - this.playAtLastAd >= ADS.everySeconds;
+    if (!adDue) {
+      show();
+      return;
+    }
+    void this.runAd("midgame").then((r) => {
+      if (r === "finished") this.playAtLastAd = this.playSeconds;
+      show();
+    });
+  }
+
+  private async runAd(kind: "midgame" | "rewarded"): Promise<AdResult> {
+    this.adBusy = true;
+    this.hud.setAdBusy(true);
+    const hooks = { started: () => this.sound.setAdPlaying(true) };
+    const result = await (kind === "midgame" ? this.portal.midgameAd(hooks) : this.portal.rewardedAd(hooks));
+    this.sound.setAdPlaying(false);
+    this.hud.setAdBusy(false);
+    this.adBusy = false;
+    this.clock.getDelta(); // don't simulate the time the ad took
+    return result;
+  }
+
+  /** Rewarded ad on the results screen: pays the run's cash again, only when the ad completes. */
+  private async doubleCash(): Promise<void> {
+    if (this.adBusy || this.doubled || this.state !== "crashed" || this.lastEarned <= 0) return;
+    const result = await this.runAd("rewarded");
+    if (result !== "finished") {
+      this.hud.rewardUnavailable();
+      return;
+    }
+    this.doubled = true;
+    this.save.cash += this.lastEarned;
+    writeSave(this.portal.storage, this.save);
+    this.hud.cashDoubled(this.lastEarned * 2, this.save.cash);
+    this.sound.buy();
+  }
+
   private end(reason: RunStats["end"]): void {
+    this.portal.gameplayStop();
     this.stats.end = reason;
     this.state = "crashed";
     document.body.classList.remove("driving");
@@ -459,6 +526,7 @@ export class Game {
     const kmh = p.speedKmh;
     const metres = p.speed * dt;
     this.stats.distanceKm += metres / 1000;
+    this.playSeconds += dt;
     this.stats.topSpeedKmh = Math.max(this.stats.topSpeedKmh, kmh);
 
     // driving points: distance weighted by speed, plus a bonus above HIGH_SPEED_KMH

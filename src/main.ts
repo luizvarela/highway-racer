@@ -1,10 +1,16 @@
 import { Game } from "./game";
+import { createPortal } from "./portal";
 
 const startButton = document.getElementById("btn-start") as HTMLButtonElement;
 startButton.disabled = true;
 startButton.textContent = "LOADING…";
 
-Game.create(document.getElementById("app")!)
+createPortal()
+  .then(async (portal) => {
+    portal.loadingStart();
+    await Game.create(document.getElementById("app")!, portal);
+    portal.loadingStop();
+  })
   .then(() => {
     startButton.disabled = false;
     startButton.textContent = "PRESS SPACE OR TAP TO DRIVE";
