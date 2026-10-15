@@ -144,8 +144,13 @@ export class Game {
     this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute(), () => void this.doubleCash());
     this.hud.setMuted(this.save.muted);
     // browsers only start audio from a user gesture
+    // Safari only treats some events as permission to play (touchend/click, not
+    // touchstart/pointerdown), so try on all of them; capture phase so the
+    // touch controls' preventDefault can't swallow them
     const unlock = () => this.sound.unlock();
-    window.addEventListener("pointerdown", unlock);
+    for (const type of ["pointerdown", "pointerup", "touchend", "click"]) {
+      window.addEventListener(type, unlock, { capture: true, passive: true });
+    }
     window.addEventListener("keydown", (e) => {
       unlock();
       if (e.code === "KeyM" && !e.repeat) this.toggleMute();
@@ -190,6 +195,7 @@ export class Game {
       get evade() { return game.evade; },
       get hazards() { return game.hazards.snapshot(); },
       get portal() { return game.portal.name; },
+      get audio() { return game.sound.state; },
       get adBusy() { return game.adBusy; },
       get playSeconds() { return game.playSeconds; },
       /** test-only: pretend this much gameplay happened this session (ad pacing) */

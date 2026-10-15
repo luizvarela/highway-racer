@@ -38,6 +38,11 @@ export class Sound {
     });
   }
 
+  /** for tests: "none" before the first gesture, else the AudioContext state */
+  get state(): string {
+    return this.ctx ? this.ctx.state : "none";
+  }
+
   private get silent(): boolean {
     return this.muted || this.forced || this.adPlaying;
   }
@@ -66,12 +71,26 @@ export class Sound {
   unlock(): void {
     if (this.ctx) {
       // "suspended", or "interrupted" on iOS after a call or backgrounding: only a gesture can resume it
-      if (this.ctx.state !== "running" && !document.hidden) void this.ctx.resume();
+      if (this.ctx.state !== "running" && !document.hidden) {
+        void this.ctx.resume();
+        this.kick(this.ctx);
+      }
       return;
     }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
+    // iOS 17+: play through the ring/silent switch like a game or video, not like a notification
+    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (session) {
+      try {
+        session.type = "playback";
+      } catch {
+        /* older Safari: the silent switch mutes web audio */
+      }
+    }
     const ctx = (this.ctx = new Ctx());
+    if (ctx.state !== "running") void ctx.resume();
+    this.kick(ctx);
     this.master = ctx.createGain();
     this.master.gain.value = this.silent ? 0 : 0.8;
     const comp = ctx.createDynamicsCompressor();
@@ -141,6 +160,18 @@ export class Sound {
     this.heliGain = ctx.createGain();
     this.heliGain.gain.value = 0;
     this.loopNoise().connect(heliLow).connect(chop).connect(this.heliGain).connect(this.master);
+  }
+
+  /** Older iOS only unlocks audio once a sound starts inside the gesture: play one silent sample. */
+  private kick(ctx: AudioContext): void {
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {
+      /* nothing to unlock */
+    }
   }
 
   private loopNoise(): AudioBufferSourceNode {
