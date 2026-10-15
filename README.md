@@ -90,7 +90,7 @@ start or results screen) on cars and upgrades.
 - **Toughness** stretches the bust meter: x1.6 takes 3.5 s to bust instead of 2.2 s.
 - Cop top speeds run 150 to 210 km/h, so the starter car can't outrun a
   5-star chase without engine upgrades.
-- Garage keys: ←/→ browse, Space drive (owned cars only), Esc back.
+- Garage keys: ←/→ browse, Space drive (owned cars only), Backspace back (not Esc, which leaves fullscreen).
 - Progress is saved in `localStorage` (`src/save.ts`, the place to plug in a
   portal cloud save). Car names are fictional on purpose; bodies are Kenney CC0
   models until the hero cars arrive.
@@ -124,6 +124,14 @@ placeholder ads.
   Progress already in localStorage carries over the first time. Turn on
   *Progress Save* when submitting, or the data module is disabled.
 - The portal's `muteAudio` setting overrides the in-game sound toggle.
+- **Lands in gameplay**: on CrazyGames the first run starts as soon as loading
+  ends (their load time is measured to the first gameplay start), with a
+  controls hint that fades after 7 s or on the first input. Other hosts keep
+  the title screen.
+
+The simulation runs in steps of at most 1/120 s with frame-rate independent
+easing (`ease` in `src/config.ts`), so it plays the same on 30, 60 and 144 Hz
+screens.
 
 
 

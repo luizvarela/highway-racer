@@ -25,6 +25,7 @@ import { loadProps, loadVehicles } from "./vehicles";
 type State = "loading" | "ready" | "garage" | "running" | "crashed";
 
 const NIGHT = 0x1a0b2e;
+const MAX_STEP_HZ = 120; // physics steps per second at least, whatever the display rate
 const CRASH_OVERLAY_DELAY = 1.1; // seconds of crash animation before the results panel
 const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
 
@@ -80,6 +81,9 @@ export class Game {
   private lastEarned = 0;
   private doubled = false;
   private celebrated = false;
+  private hinted = false;
+  private hintTime = -1; // seconds of driving since the hint appeared; -1 = not showing
+  private hintSkip = false; // a key or tap asked to skip it
   private hazardWarned = false; // the warning beep plays once per hazard
 
   static async create(container: HTMLElement, portal: Portal): Promise<Game> {
@@ -210,14 +214,19 @@ export class Game {
       },
       get save() { return JSON.parse(JSON.stringify(game.save)); },
       get obstacles() { return [...game.traffic.obstacles(), ...game.hazards.obstacles()]; },
-      /** test-only: stop real-time simulation and advance it in fixed 1/60 s steps */
-      advance(seconds: number) {
+      /** test-only: stop real-time simulation and advance it in fixed 1/hz s steps (default 60 Hz) */
+      advance(seconds: number, hz = 60) {
         game.manualTime = true;
-        for (let i = 0; i < Math.round(seconds * 60); i++) game.simulate(1 / 60);
+        for (let i = 0; i < Math.round(seconds * hz); i++) game.step(1 / hz);
       },
     };
 
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  /** Called once loading is done: straight into the first run where the portal wants that. */
+  begin(): void {
+    if (this.portal.landInGameplay && this.state === "ready") this.start();
   }
 
   private handleAction(): void {
@@ -256,6 +265,19 @@ export class Game {
   }
 
   private start(): void {
+    if (!this.hinted) {
+      this.hinted = true; // first run of the session: show the controls for a few seconds
+      this.hud.showHint();
+      this.hintTime = 0;
+      this.hintSkip = false;
+      const skip = () => {
+        this.hintSkip = true;
+        window.removeEventListener("keydown", skip);
+        window.removeEventListener("pointerdown", skip);
+      };
+      window.addEventListener("keydown", skip);
+      window.addEventListener("pointerdown", skip);
+    }
     this.portal.gameplayStart();
     this.state = "running";
     document.body.classList.add("driving");
@@ -285,6 +307,7 @@ export class Game {
   }
 
   private closeGarage(): void {
+    this.camera.clearViewOffset();
     this.showroom.intensity = 0;
     this.useSelectedCar();
     this.reset();
@@ -307,8 +330,17 @@ export class Game {
 
   private frame(): void {
     const dt = Math.min(this.clock.getDelta(), 1 / 20);
-    if (!this.manualTime && !this.adBusy) this.simulate(dt);
+    if (!this.manualTime && !this.adBusy) this.step(dt);
     this.composer.render();
+  }
+
+  /**
+   * Advance by one frame's dt in physics steps of at most 1/120 s, so the
+   * game plays the same on 30, 60 and 144 Hz screens.
+   */
+  private step(dt: number): void {
+    const n = Math.max(1, Math.ceil(dt * MAX_STEP_HZ - 1e-6));
+    for (let i = 0; i < n; i++) this.simulate(dt / n);
   }
 
   private simulate(dt: number): void {
@@ -450,6 +482,16 @@ export class Game {
     this.hud.popup(`${label} +${bonus}`, "escape");
   }
 
+  /** The hint stays 6 s of driving, or until a key/tap once it has been up 1.5 s (so it is never skipped unseen). */
+  private updateHint(dt: number): void {
+    if (this.hintTime < 0) return;
+    this.hintTime += dt;
+    if (this.hintTime > 6 || (this.hintSkip && this.hintTime > 1.5)) {
+      this.hintTime = -1;
+      this.hud.hideHint();
+    }
+  }
+
   /** Bank the run, maybe show a midgame ad (at the death transition), then the results. */
   private finishRun(): void {
     const score = Math.floor(this.stats.score);
@@ -505,6 +547,10 @@ export class Game {
   }
 
   private end(reason: RunStats["end"]): void {
+    if (this.hintTime >= 0) {
+      this.hintTime = -1;
+      this.hud.hideHint();
+    }
     this.portal.gameplayStop();
     this.input.release();
     this.stats.end = reason;
@@ -534,6 +580,7 @@ export class Game {
     const metres = p.speed * dt;
     this.stats.distanceKm += metres / 1000;
     this.playSeconds += dt;
+    this.updateHint(dt);
     this.stats.topSpeedKmh = Math.max(this.stats.topSpeedKmh, kmh);
 
     // driving points: distance weighted by speed, plus a bonus above HIGH_SPEED_KMH
@@ -598,6 +645,11 @@ export class Game {
       const r = cam.aspect < 1 ? 13 : 8.5; // portrait needs more distance to fit the car
       cam.position.set(Math.sin(this.garageAngle + 0.6) * r, 3.2, Math.cos(this.garageAngle + 0.6) * r);
       cam.fov = (cam.userData.baseFov as number) ?? 62;
+      // short landscape screens put the panel on the right: shift the car into the left half
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (h <= 520 && w > h) cam.setViewOffset(w, h, w * 0.22, 0, w, h);
+      else cam.clearViewOffset();
       cam.updateProjectionMatrix();
       cam.lookAt(0, -0.6, 0);
       this.skyline.follow(cam.position.x);

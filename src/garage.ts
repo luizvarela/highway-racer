@@ -43,7 +43,10 @@ export class Garage {
       if (!this.open || e.repeat) return;
       if (e.code === "ArrowLeft" || e.code === "KeyA") this.step(-1);
       else if (e.code === "ArrowRight" || e.code === "KeyD") this.step(1);
-      else if (e.code === "Escape") this.close("back");
+      else if (e.code === "Backspace") {
+        e.preventDefault();
+        this.close("back"); // not Escape: browsers use it to leave fullscreen
+      }
     });
   }
 

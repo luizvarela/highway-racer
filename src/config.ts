@@ -3,6 +3,13 @@
 
 export const KMH = 1 / 3.6; // multiply km/h by this to get m/s
 
+/**
+ * Blend factor for easing a value towards a target at `rate` per second.
+ * Frame-rate independent (the same motion at 30, 60 or 144 Hz), unlike
+ * `rate * dt`. Rates were set so the feel at 60 Hz matches the old blend.
+ */
+export const ease = (rate: number, dt: number): number => 1 - Math.exp(-rate * dt);
+
 export const LANE_WIDTH = 3.6;
 export const LANE_COUNT = 4;
 export const ROAD_WIDTH = LANE_WIDTH * LANE_COUNT;
@@ -23,7 +30,7 @@ export const PLAYER = {
   fxMaxSpeedKmh: 250, // speed lines, FOV and camera reach full strength here
   brake: 24, // m/s²
   coastDecel: 2.5, // m/s² with no input
-  steerResponse: 9, // how fast lateral velocity reaches its target
+  steerResponse: 9.75, // how fast lateral velocity reaches its target (per second, see ease)
 };
 
 export const HIGH_SPEED_KMH = 100;

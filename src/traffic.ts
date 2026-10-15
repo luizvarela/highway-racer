@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { KMH, LANE_COUNT, SCORE, TRAFFIC, laneCenter } from "./config";
+import { KMH, LANE_COUNT, SCORE, TRAFFIC, ease, laneCenter } from "./config";
 import type { LaneWall } from "./hazards";
 import { buildVehicle, spinWheels, type VehicleKind, type VehicleModel } from "./vehicles";
 
@@ -143,7 +143,7 @@ export class Traffic {
       for (const w of this.walls) {
         if (w.lane === car.lane && w.z < z) target = Math.min(target, brakeSpeed(z - car.model.size.length / 2 - w.z));
       }
-      car.speed += (target - car.speed) * Math.min(1, (target < car.speed ? 5 : 2) * dt);
+      car.speed += (target - car.speed) * ease(target < car.speed ? 5.22 : 2.03, dt);
 
       car.model.group.position.z += (playerSpeed - car.speed) * dt;
       spinWheels(car.model, car.speed, dt);

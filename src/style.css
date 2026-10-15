@@ -954,3 +954,147 @@ body.touch.driving #touch-controls {
     height: 92px;
   }
 }
+
+/* ---- first-run controls hint ---- */
+
+#hint {
+  position: fixed;
+  left: 50%;
+  bottom: 31%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(10, 8, 18, 0.72);
+  pointer-events: none;
+  z-index: 3;
+  transition: opacity 0.6s;
+  max-width: calc(100vw - 32px);
+}
+
+#hint.fade {
+  opacity: 0;
+}
+
+.hint-keys,
+.hint-touch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.hint-touch {
+  display: none;
+}
+
+body.touch .hint-keys {
+  display: none;
+}
+
+body.touch .hint-touch {
+  display: flex;
+}
+
+/* above the car on portrait phones */
+body.touch #hint {
+  bottom: 36%;
+}
+
+.hint-goal {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---- short landscape screens (phones sideways; CrazyGames' 800x450 reference) ---- */
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .overlay {
+    gap: 6px;
+    padding: 8px 16px;
+  }
+  .overlay h1 {
+    font-size: 34px;
+  }
+  .pitch,
+  .sub {
+    display: none;
+  }
+  .controls {
+    padding: 8px 14px;
+    gap: 2px;
+    font-size: 13px;
+  }
+  .final-score {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .final-score b {
+    font-size: 30px;
+  }
+  .results {
+    gap: 8px;
+    width: min(680px, 100%);
+  }
+  .stats {
+    gap: 1px;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+  .stats h2 {
+    font-size: 11px;
+  }
+  .new-best {
+    font-size: 15px;
+  }
+  .btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  /* garage: car on the left (the camera shifts it there), panel on the right */
+  #overlay-garage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px 12px;
+    background: linear-gradient(90deg, transparent 35%, rgba(10, 12, 20, 0.6));
+  }
+  .garage-top {
+    grid-column: 1 / -1;
+  }
+  .garage-picker {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+  }
+  .garage-name {
+    font-size: 28px;
+  }
+  .garage-panel {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0;
+    align-self: end;
+    width: 100%;
+    gap: 4px;
+    padding: 10px 12px;
+  }
+  .stat-row {
+    grid-template-columns: 74px minmax(0, 1fr) 62px 76px;
+    min-height: 28px;
+    font-size: 12px;
+  }
+  .stat-row .pips {
+    display: none;
+  }
+  .garage-head {
+    font-size: 12px;
+  }
+}

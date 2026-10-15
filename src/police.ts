@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { KMH, LANE_COUNT, POLICE, RAIL_X, laneCenter } from "./config";
+import { KMH, LANE_COUNT, POLICE, RAIL_X, ease, laneCenter } from "./config";
 import type { Box, Obstacle } from "./traffic";
 import { buildVehicle, spinWheels, type VehicleModel } from "./vehicles";
 
@@ -248,7 +248,7 @@ export class Police {
         let targetX = c.dodgeX ?? desiredX;
         if (c.dodgeX === null && this.blockedSideways(c, targetX, obstacles)) targetX = c.x;
         const targetVel = THREE.MathUtils.clamp((targetX - c.x) * 3, -POLICE.steerSpeed, POLICE.steerSpeed);
-        c.lateralVel += (targetVel - c.lateralVel) * Math.min(1, 8 * dt);
+        c.lateralVel += (targetVel - c.lateralVel) * ease(8.59, dt);
         c.x = THREE.MathUtils.clamp(c.x + c.lateralVel * dt, -ROAD_X, ROAD_X);
         c.model.group.rotation.y = -c.lateralVel * 0.035;
       }

@@ -174,6 +174,15 @@ export class Hud {
     this.siren.style.opacity = "0";
   }
 
+  /** Controls overlay for the first run (the game decides when it goes, see Game.updateHint). */
+  showHint(): void {
+    $("hint").classList.remove("hidden", "fade");
+  }
+
+  hideHint(): void {
+    $("hint").classList.add("fade");
+  }
+
   /** Block all input while an ad loads or plays. */
   setAdBusy(on: boolean): void {
     $("ad-block").classList.toggle("hidden", !on);

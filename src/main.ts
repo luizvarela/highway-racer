@@ -8,8 +8,9 @@ startButton.textContent = "LOADING…";
 createPortal()
   .then(async (portal) => {
     portal.loadingStart();
-    await Game.create(document.getElementById("app")!, portal);
+    const game = await Game.create(document.getElementById("app")!, portal);
     portal.loadingStop();
+    game.begin(); // after loadingStop: the portal may start gameplay right away
   })
   .then(() => {
     startButton.disabled = false;

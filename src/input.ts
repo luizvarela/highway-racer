@@ -5,6 +5,8 @@
 // while the brake is up. The controls show only on touch devices while
 // driving (body.touch.driving, see style.css).
 
+import { ease } from "./config";
+
 export interface InputState {
   throttle: number; // 0..1
   brake: number; // 0..1
@@ -127,8 +129,8 @@ export class Input {
     }
 
     // ease steering in/out so digital input feels analogue
-    const rate = steerTarget === 0 ? 10 : 6;
-    this.smoothedSteer += (steerTarget - this.smoothedSteer) * Math.min(1, rate * dt);
+    const rate = steerTarget === 0 ? 10.94 : 6.32;
+    this.smoothedSteer += (steerTarget - this.smoothedSteer) * ease(rate, dt);
     if (Math.abs(this.smoothedSteer) < 0.001) this.smoothedSteer = 0;
 
     return { throttle, brake, steer: this.smoothedSteer };

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { KMH, PLAYER, RAIL_X } from "./config";
+import { KMH, PLAYER, RAIL_X, ease } from "./config";
 import type { InputState } from "./input";
 import type { CarDef, CarStats } from "./cars";
 import { buildVehicle, spinWheels, type VehicleModel } from "./vehicles";
@@ -150,7 +150,7 @@ export class Player {
         this.wobble += dt;
         targetVel = targetVel * 0.7 + Math.sin(this.wobble * 9) * 1.6;
       }
-      this.lateralVel += (targetVel - this.lateralVel) * Math.min(1, PLAYER.steerResponse * dt);
+      this.lateralVel += (targetVel - this.lateralVel) * ease(PLAYER.steerResponse, dt);
       this.x += this.lateralVel * dt;
 
       // guard rails: clamp and scrub some speed instead of crashing

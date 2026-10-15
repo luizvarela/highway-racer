@@ -16,6 +16,8 @@ export interface Portal {
   readonly name: string;
   /** rewarded ads can be offered on this host */
   readonly hasRewarded: boolean;
+  /** skip the title screen: the first run starts as soon as loading ends (CrazyGames: "land directly in gameplay") */
+  readonly landInGameplay: boolean;
   loadingStart(): void;
   loadingStop(): void;
   gameplayStart(): void;
@@ -50,6 +52,7 @@ const localStore: Portal["storage"] = {
 class NoPortal implements Portal {
   readonly name = "none";
   readonly hasRewarded = false;
+  readonly landInGameplay = false;
   readonly storage = localStore;
   loadingStart(): void {}
   loadingStop(): void {}
@@ -93,6 +96,7 @@ const SDK_URL = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
 class CrazyPortal implements Portal {
   readonly name = "crazygames";
   readonly hasRewarded = true;
+  readonly landInGameplay = true;
   readonly storage: Portal["storage"];
   private playing = false;
 
