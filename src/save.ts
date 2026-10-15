@@ -3,6 +3,7 @@ import { CARS, MAX_UPGRADE, UPGRADE_KINDS, type Upgrades } from "./cars";
 // Player progress. Kept in localStorage for now; this is the one place to
 // swap in a portal's cloud save (e.g. the CrazyGames SDK data module) later.
 
+// keys keep the project's original name: renaming them would drop players' progress
 const KEY = "highway-racer.save";
 const LEGACY_BEST_KEY = "highway-racer.best";
 

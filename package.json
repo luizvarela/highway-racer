@@ -1,5 +1,5 @@
 {
-  "name": "highway-racer",
+  "name": "neon-getaway",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "deploy:pages": "scripts/deploy-pages.sh",
-    "build:crazygames": "tsc --noEmit && vite build --mode crazygames --base=./ --outDir dist-crazygames --emptyOutDir && rm -f highway-racer-crazygames.zip && (cd dist-crazygames && zip -qr ../highway-racer-crazygames.zip .)"
+    "build:crazygames": "tsc --noEmit && vite build --mode crazygames --base=./ --outDir dist-crazygames --emptyOutDir && rm -f neon-getaway-crazygames.zip && (cd dist-crazygames && zip -qr ../neon-getaway-crazygames.zip .)"
   },
   "dependencies": {
     "three": "0.170.0"

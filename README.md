@@ -1,4 +1,4 @@
-# Highway Racer (prototype)
+# Neon Getaway
 
 Neon night getaway racer in Three.js + TypeScript: an endless highway with the
 police on your tail.
@@ -101,7 +101,7 @@ The game talks to web portals only through `src/portal.ts`. GitHub Pages and
 local dev use a no-op portal (no ads, localStorage saves).
 
 ```bash
-npm run build:crazygames   # dist-crazygames/ + highway-racer-crazygames.zip (relative paths)
+npm run build:crazygames   # dist-crazygames/ + neon-getaway-crazygames.zip (relative paths)
 ```
 
 The CrazyGames build (or any page opened with `?portal=crazygames`) loads the
