@@ -91,5 +91,35 @@ export const STAT_CEILING: CarStats = {
 
 export const carById = (id: string): CarDef => CARS.find((c) => c.id === id) ?? CARS[0];
 
+export interface NextGoal {
+  carId: string;
+  text: string; // "Viper · $1,240 to go" or "Engine upgrade ready"
+  ready: boolean;
+}
+
+/**
+ * What to point the player at next: the cheapest car they don't own, or, if
+ * they own them all, the cheapest upgrade on the selected car.
+ */
+export function nextGoal(cash: number, owned: Record<string, Upgrades>, selected: string): NextGoal | null {
+  const car = CARS.filter((c) => !owned[c.id]).sort((a, b) => a.price - b.price)[0];
+  if (car) {
+    const gap = car.price - cash;
+    return gap > 0
+      ? { carId: car.id, text: `${car.name} · ${money(gap)} to go`, ready: false }
+      : { carId: car.id, text: `${car.name} ready to buy`, ready: true };
+  }
+  const cur = carById(selected);
+  const up = owned[cur.id] ?? { engine: 0, turbo: 0, handling: 0 };
+  const cheapest = UPGRADE_KINDS.map((k) => ({ k, price: upgradePrice(cur, up[k]) })).filter((x) => x.price !== null).sort((a, b) => a.price! - b.price!)[0];
+  if (!cheapest) return null;
+  const gap = cheapest.price! - cash;
+  return gap > 0
+    ? { carId: cur.id, text: `${UPGRADE_LABEL[cheapest.k]} upgrade · ${money(gap)} to go`, ready: false }
+    : { carId: cur.id, text: `${UPGRADE_LABEL[cheapest.k]} upgrade ready`, ready: true };
+}
+
+const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+
 /** Cash earned for a run: $1 per 5 points. */
 export const cashForScore = (score: number): number => Math.floor(score / 5);

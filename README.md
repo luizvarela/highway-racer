@@ -44,6 +44,24 @@ pays more than just driving far.
 
 All of these numbers live in `HEAT`, `POLICE`, `ESCAPE` and `SCORE` in `src/config.ts`.
 
+## Missions, daily bonus, next goal
+
+Three **missions** are always active (`src/missions.ts`): totals that add up
+across runs ("Get 10 near misses") and single-run goals ("Drive 2 km in one
+run", tagged *1 run*). Finishing one pays $250–$1,000 and a new mission takes
+its slot; every 4 completions moves new missions up a tier (bigger targets,
+bigger pay). A "MISSION DONE" popup fires the moment the target is reached;
+the cash lands on the results screen. One free swap (↻) a day.
+
+The **daily bonus** pays $200 on the first day and $200 more per consecutive
+day, up to $1,000; a missed day resets it. Days follow the player's local
+calendar. The **next goal** line under the wallet ("Viper · $1,200 to go")
+opens the garage on that car; once every car is owned it points at the
+cheapest upgrade.
+
+All three live in the save (`missions`, `missionsDone`, `rerollDay`, `daily`)
+and sync through the portal store like everything else.
+
 ## Hazards
 
 The police put obstacles on the road ahead while they chase you. A warning
@@ -148,6 +166,7 @@ screens.
 | `src/cars.ts` | Car catalog, upgrade steps and prices, cash per score |
 | `src/save.ts` | Saved progress (best, cash, owned cars, upgrades) with sanitising |
 | `src/garage.ts` | Garage overlay: browse, buy, upgrade |
+| `src/missions.ts` | Mission templates, progress, rewards; daily bonus |
 | `src/hazards.ts` | Spike strips and roadblocks: spawning, warnings, collisions, lane walls for traffic |
 | `src/helicopter.ts` | 5-star helicopter with searchlight (built from primitives) |
 | `src/debris.ts` | Pooled flying car parts and spark bursts |

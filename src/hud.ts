@@ -1,6 +1,8 @@
 import { HEAT } from "./config";
 import { money } from "./garage";
 import type { HazardWarning } from "./hazards";
+import type { NextGoal } from "./cars";
+import type { MissionView } from "./missions";
 import { POINT_SOURCES, type PointSource } from "./scoring";
 
 // Thin wrapper over the DOM HUD and overlays declared in index.html.
@@ -69,13 +71,94 @@ export class Hud {
   private readonly heli = $("hud-heli");
   private readonly mute = $("btn-mute");
 
-  constructor(onStart: () => void, onGarage: () => void, onMute: () => void, onDouble: () => void) {
+  private missionViews: MissionView[] = [];
+  private readonly onSwap: (index: number) => void;
+
+  constructor(
+    cb: { onStart: () => void; onGarage: (carId?: string) => void; onMute: () => void; onDouble: () => void; onDaily: () => void; onSwap: (index: number) => void },
+  ) {
+    const { onStart, onGarage, onMute, onDouble, onDaily, onSwap } = cb;
+    this.onSwap = onSwap;
     $("btn-double").addEventListener("click", onDouble);
+    for (const el of document.querySelectorAll<HTMLElement>(".btn-daily")) el.addEventListener("click", onDaily);
+    for (const id of ["start-goal", "crash-goal"]) $(id).addEventListener("click", () => onGarage($(id).dataset.car));
     this.mute.addEventListener("click", onMute);
     $("btn-start").addEventListener("click", onStart);
     $("btn-restart").addEventListener("click", onStart);
-    $("btn-garage").addEventListener("click", onGarage);
-    $("btn-garage-2").addEventListener("click", onGarage);
+    $("btn-garage").addEventListener("click", () => onGarage());
+    $("btn-garage-2").addEventListener("click", () => onGarage());
+  }
+
+  /** Wallet readouts on the start and results screens. */
+  setCash(cash: number): void {
+    $("start-cash").textContent = money(cash);
+    $("crash-total").textContent = money(cash);
+  }
+
+  /** Daily bonus card on both screens; null = claimed today (hidden). */
+  showDaily(offer: { day: number; cash: number } | null): void {
+    for (const id of ["daily-start", "daily-crash"]) {
+      const el = $(id);
+      el.classList.toggle("hidden", !offer);
+      el.classList.remove("claimed");
+      if (offer) el.querySelector(".daily-text")!.innerHTML = `DAILY BONUS <b>+${money(offer.cash)}</b> <span class="muted">day ${offer.day}</span>`;
+    }
+  }
+
+  dailyClaimed(cash: number): void {
+    for (const id of ["daily-start", "daily-crash"]) {
+      const el = $(id);
+      el.classList.add("claimed");
+      el.querySelector(".daily-text")!.innerHTML = `+${money(cash)} <span class="muted">collected</span>`;
+    }
+  }
+
+  /** "Next: Viper · $1,240 to go" link under the wallet; opens the garage on that car. */
+  showGoal(goal: NextGoal | null): void {
+    for (const id of ["start-goal", "crash-goal"]) {
+      const el = $(id);
+      el.classList.toggle("hidden", !goal);
+      el.classList.toggle("ready", !!goal?.ready);
+      if (goal) {
+        el.dataset.car = goal.carId;
+        el.textContent = `${goal.ready ? "✓" : "→"} ${goal.text}`;
+      }
+    }
+  }
+
+  /** Mission lists on both screens. `swappable` enables the ↻ button on unfinished ones. */
+  showMissions(views: MissionView[], swappable: boolean): void {
+    this.missionViews = views;
+    for (const id of ["missions-start", "missions-crash"]) {
+      const box = $(id);
+      box.replaceChildren();
+      views.forEach((v, i) => {
+        const row = document.createElement("div");
+        row.className = `mission${v.done ? " done" : ""}`;
+        const pct = Math.min(100, (v.progress / v.target) * 100);
+        const num = v.target >= 1000 ? `${Math.floor(v.progress).toLocaleString("en-US")}/${v.target.toLocaleString("en-US")}` : `${Math.floor(v.progress)}/${v.target}`;
+        row.innerHTML =
+          `<div class="m-text">${v.text}${v.single ? '<span class="m-tag">1 run</span>' : ""}</div>` +
+          `<div class="m-bar"><div style="width:${pct}%"></div></div>` +
+          `<div class="m-num">${v.done ? "DONE" : num}</div>` +
+          `<div class="m-reward">+${money(v.reward)}</div>`;
+        const swap = document.createElement("button");
+        swap.className = "m-swap";
+        swap.title = "Swap this mission (once a day)";
+        swap.textContent = "↻";
+        swap.classList.toggle("hidden", !swappable || v.done);
+        swap.addEventListener("click", () => this.onSwap(i));
+        row.appendChild(swap);
+        box.appendChild(row);
+      });
+    }
+  }
+
+  /** After a swap: only that row changes, the others keep what the player was looking at. */
+  replaceMission(index: number, view: MissionView): void {
+    const views = [...this.missionViews];
+    views[index] = view;
+    this.showMissions(views, false);
   }
 
   showStart(carName: string, cash: number): void {
@@ -201,7 +284,9 @@ export class Hud {
     b.textContent = "NO AD RIGHT NOW";
   }
 
-  showCrash(stats: RunStats, isBest: boolean, earned: number, cash: number, canDouble: boolean): void {
+  showCrash(stats: RunStats, isBest: boolean, earned: number, missionCash: number, cash: number, canDouble: boolean): void {
+    $("crash-missions").classList.toggle("hidden", missionCash <= 0);
+    $("crash-missions").querySelector("b")!.textContent = money(missionCash);
     const dbl = $("btn-double") as HTMLButtonElement;
     dbl.classList.toggle("hidden", !canDouble);
     dbl.disabled = false;

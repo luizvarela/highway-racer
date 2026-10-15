@@ -54,9 +54,9 @@ export class Garage {
     return this.open;
   }
 
-  show(): void {
+  show(carId = this.host.save.selected): void {
     this.open = true;
-    this.index = Math.max(0, CARS.findIndex((c) => c.id === this.host.save.selected));
+    this.index = Math.max(0, CARS.findIndex((c) => c.id === carId));
     this.overlay.classList.remove("hidden");
     this.render();
   }

@@ -1,4 +1,5 @@
 import { CARS, MAX_UPGRADE, UPGRADE_KINDS, type Upgrades } from "./cars";
+import { MISSION_SLOTS, TEMPLATES, initialMissions, type Daily, type Mission } from "./missions";
 
 // Player progress. Kept in localStorage for now; this is the one place to
 // swap in a portal's cloud save (e.g. the CrazyGames SDK data module) later.
@@ -15,12 +16,19 @@ export interface SaveData {
   /** owned cars and their upgrade levels */
   cars: Record<string, Upgrades>;
   muted: boolean;
+  missions: Mission[];
+  missionsDone: number; // lifetime completions; sets the tier of new missions
+  rerollDay: string; // YYYY-MM-DD of the last free reroll
+  daily: Daily;
 }
 
 export const noUpgrades = (): Upgrades => ({ engine: 0, turbo: 0, handling: 0 });
 
 function fresh(): SaveData {
-  return { v: 1, best: 0, cash: 0, selected: CARS[0].id, cars: { [CARS[0].id]: noUpgrades() }, muted: false };
+  return {
+    v: 1, best: 0, cash: 0, selected: CARS[0].id, cars: { [CARS[0].id]: noUpgrades() }, muted: false,
+    missions: initialMissions(), missionsDone: 0, rerollDay: "", daily: { lastClaim: "", streak: 0 },
+  };
 }
 
 export type SaveStore = Pick<Storage, "getItem" | "setItem">;
@@ -59,6 +67,18 @@ export function loadSave(store: SaveStore): SaveData {
         data.cars[car.id] = clean;
       }
       data.muted = raw.muted === true;
+      // missions: keep only well-formed ones with a known template, top up to the slot count
+      const ids = new Set(TEMPLATES.map((t) => t.id));
+      const missions = (Array.isArray(raw.missions) ? raw.missions : [])
+        .filter((m): m is Mission => !!m && typeof m === "object" && ids.has(String(m.id)))
+        .map((m) => ({ id: String(m.id), tier: Math.max(0, Math.floor(Number(m.tier) || 0)), progress: Math.max(0, Number(m.progress) || 0) }))
+        .slice(0, MISSION_SLOTS);
+      data.missionsDone = Math.max(0, Math.floor(Number(raw.missionsDone) || 0));
+      if (missions.length) data.missions = missions;
+      data.rerollDay = typeof raw.rerollDay === "string" ? raw.rerollDay : "";
+      if (raw.daily && typeof raw.daily === "object") {
+        data.daily = { lastClaim: typeof raw.daily.lastClaim === "string" ? raw.daily.lastClaim : "", streak: Math.max(0, Math.floor(Number(raw.daily.streak) || 0)) };
+      }
       if (typeof raw.selected === "string" && data.cars[raw.selected]) data.selected = raw.selected;
     } else {
       data.best = Math.max(0, Math.floor(Number(localRead(LEGACY_BEST_KEY)) || 0));

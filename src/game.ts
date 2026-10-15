@@ -3,7 +3,8 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { CARS, carById, carStats, cashForScore } from "./cars";
+import { CARS, carById, carStats, cashForScore, nextGoal } from "./cars";
+import { applyRun, claimDaily, dailyOffer, drawMission, fillMissions, liveViews, setDateOverride, today, viewMission } from "./missions";
 import { Sound } from "./audio";
 import { ADS, ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { DEBRIS_KINDS, Debris } from "./debris";
@@ -84,6 +85,8 @@ export class Game {
   private hinted = false;
   private hintTime = -1; // seconds of driving since the hint appeared; -1 = not showing
   private hintSkip = false; // a key or tap asked to skip it
+  private missionCheck = 0; // seconds until the next live mission check
+  private missionDoneShown = new Set<number>();
   private hazardWarned = false; // the warning beep plays once per hazard
 
   static async create(container: HTMLElement, portal: Portal): Promise<Game> {
@@ -94,6 +97,7 @@ export class Game {
 
   private constructor(container: HTMLElement, private readonly portal: Portal) {
     this.save = loadSave(portal.storage);
+    fillMissions(this.save.missions, this.save.missionsDone);
     this.sound = new Sound(this.save.muted);
     portal.onForcedMute((m) => this.sound.setForcedMute(m));
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -145,7 +149,14 @@ export class Game {
 
     this.input = new Input();
     this.input.onAction = () => this.handleAction();
-    this.hud = new Hud(() => this.handleAction(), () => this.openGarage(), () => this.toggleMute(), () => void this.doubleCash());
+    this.hud = new Hud({
+      onStart: () => this.handleAction(),
+      onGarage: (carId) => this.openGarage(carId),
+      onMute: () => this.toggleMute(),
+      onDouble: () => void this.doubleCash(),
+      onDaily: () => this.claimDailyBonus(),
+      onSwap: (i) => this.swapMission(i),
+    });
     this.hud.setMuted(this.save.muted);
     // browsers only start audio from a user gesture
     // Safari only treats some events as permission to play (touchend/click, not
@@ -200,6 +211,9 @@ export class Game {
       get hazards() { return game.hazards.snapshot(); },
       get portal() { return game.portal.name; },
       get audio() { return game.sound.state; },
+      get missions() { return liveViews(game.save.missions, game.stats); },
+      /** test-only: set the date missions/daily use (YYYY-MM-DD); "" = real clock */
+      setDate(d: string) { setDateOverride(d); },
       get audioLog() { return game.sound.log.join(" | "); },
       /** test-only: suspend audio like an iOS interruption */
       interruptAudio() { game.sound.interruptForTest(); },
@@ -260,6 +274,8 @@ export class Game {
     this.heli.reset();
     this.debris.reset();
     this.hazardWarned = false;
+    this.missionCheck = 0;
+    this.missionDoneShown.clear();
     this.stats = newStats();
     this.scoring.reset();
     this.heat = 0;
@@ -299,6 +315,41 @@ export class Game {
 
   private showStart(): void {
     this.hud.showStart(carById(this.save.selected).name, this.save.cash);
+    this.hud.showMissions(this.save.missions.map(viewMission), this.canSwap);
+    this.showProgressCards();
+  }
+
+  /** Daily bonus and next-car goal, on both menu screens. */
+  private showProgressCards(): void {
+    this.hud.showDaily(dailyOffer(this.save.daily));
+    this.hud.showGoal(nextGoal(this.save.cash, this.save.cars, this.save.selected));
+    this.hud.setCash(this.save.cash);
+  }
+
+  private claimDailyBonus(): void {
+    const cash = claimDaily(this.save.daily);
+    if (cash <= 0) return;
+    this.save.cash += cash;
+    writeSave(this.portal.storage, this.save);
+    this.hud.dailyClaimed(cash);
+    this.hud.showGoal(nextGoal(this.save.cash, this.save.cars, this.save.selected));
+    this.hud.setCash(this.save.cash);
+    this.sound.buy();
+  }
+
+  private get canSwap(): boolean {
+    return this.save.rerollDay !== today();
+  }
+
+  /** One free mission swap a day. */
+  private swapMission(index: number): void {
+    if (!this.canSwap || !this.save.missions[index]) return;
+    const others = this.save.missions.filter((_, i) => i !== index);
+    this.save.missions[index] = drawMission(others, this.save.missionsDone);
+    this.save.rerollDay = today();
+    writeSave(this.portal.storage, this.save);
+    this.hud.replaceMission(index, viewMission(this.save.missions[index]));
+    this.sound.click();
   }
 
   private useSelectedCar(): void {
@@ -306,7 +357,7 @@ export class Game {
     this.player.setCar(car, carStats(car, this.save.cars[car.id]));
   }
 
-  private openGarage(): void {
+  private openGarage(carId?: string): void {
     if (this.adBusy) return;
     if (this.state === "crashed" && this.crashTimer < CRASH_OVERLAY_DELAY) return;
     if (this.state !== "ready" && this.state !== "crashed") return;
@@ -316,7 +367,7 @@ export class Game {
     this.traffic.group.visible = false;
     this.police.group.visible = false;
     this.showroom.intensity = 28;
-    this.garage.show();
+    this.garage.show(carId);
   }
 
   private closeGarage(): void {
@@ -495,6 +546,19 @@ export class Game {
     this.hud.popup(`${label} +${bonus}`, "escape");
   }
 
+  /** Twice a second: a popup the moment a mission's target is reached (the cash is paid at the end of the run). */
+  private updateMissions(dt: number): void {
+    this.missionCheck -= dt;
+    if (this.missionCheck > 0) return;
+    this.missionCheck = 0.5;
+    liveViews(this.save.missions, this.stats).forEach((v, i) => {
+      if (!v.done || this.missionDoneShown.has(i)) return;
+      this.missionDoneShown.add(i);
+      this.hud.popup(`MISSION DONE +${v.reward}`, "escape");
+      this.sound.escape();
+    });
+  }
+
   /** The hint stays 6 s of driving, or until a key/tap once it has been up 1.5 s (so it is never skipped unseen). */
   private updateHint(dt: number): void {
     if (this.hintTime < 0) return;
@@ -513,6 +577,11 @@ export class Game {
     if (isBest) this.save.best = score;
     const earned = cashForScore(score);
     this.save.cash += earned;
+    // missions: show them as they stood at the end of this run, then fold the run in
+    const missionViews = liveViews(this.save.missions, this.stats);
+    const missions = applyRun(this.save.missions, this.stats, this.save.missionsDone);
+    this.save.missionsDone += missions.completed.length;
+    this.save.cash += missions.cash;
     writeSave(this.portal.storage, this.save);
     this.lastEarned = earned;
     this.doubled = false;
@@ -520,7 +589,11 @@ export class Game {
       this.celebrated = true; // once a session keeps it special
       this.portal.happytime();
     }
-    const show = () => this.hud.showCrash(this.stats, isBest, earned, this.save.cash, this.portal.hasRewarded && earned > 0);
+    const show = () => {
+      this.hud.showCrash(this.stats, isBest, earned, missions.cash, this.save.cash, this.portal.hasRewarded && earned > 0);
+      this.hud.showMissions(missionViews, this.canSwap);
+      this.showProgressCards();
+    };
     const adDue = this.playSeconds >= ADS.firstAfterSeconds && this.playSeconds - this.playAtLastAd >= ADS.everySeconds;
     if (!adDue) {
       show();
@@ -556,6 +629,7 @@ export class Game {
     this.save.cash += this.lastEarned;
     writeSave(this.portal.storage, this.save);
     this.hud.cashDoubled(this.lastEarned * 2, this.save.cash);
+    this.hud.showGoal(nextGoal(this.save.cash, this.save.cars, this.save.selected));
     this.sound.buy();
   }
 
@@ -594,6 +668,7 @@ export class Game {
     this.stats.distanceKm += metres / 1000;
     this.playSeconds += dt;
     this.updateHint(dt);
+    this.updateMissions(dt);
     this.stats.topSpeedKmh = Math.max(this.stats.topSpeedKmh, kmh);
 
     // driving points: distance weighted by speed, plus a bonus above HIGH_SPEED_KMH

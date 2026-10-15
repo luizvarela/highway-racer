@@ -69,6 +69,9 @@
         <button id="btn-garage" class="btn btn-alt">GARAGE</button>
         <div class="wallet"><span id="start-car">Comet</span> · <b id="start-cash">$0</b></div>
       </div>
+      <button id="start-goal" class="goal hidden"></button>
+      <div id="daily-start" class="daily hidden"><span class="daily-text"></span><button class="btn btn-small btn-daily">COLLECT</button></div>
+      <div class="missions-box"><h2>Missions</h2><div id="missions-start" class="missions"></div></div>
     </div>
 
     <div id="overlay-crash" class="overlay hidden">
@@ -94,9 +97,15 @@
           <div><span>Roadblocks run</span><b id="crash-roadblocks">0</b></div>
           <div><span>Wanted level</span><b id="crash-heat">★</b></div>
         </div>
+        <div class="stats missions-card">
+          <h2>Missions</h2>
+          <div id="missions-crash" class="missions"></div>
+        </div>
       </div>
       <div id="crash-best" class="new-best hidden">NEW BEST!</div>
-      <div class="earned">+<b id="crash-cash">$0</b> cash<span id="crash-doubled" class="hidden"> (doubled)</span> · total <span id="crash-total">$0</span></div>
+      <div class="earned">+<b id="crash-cash">$0</b> cash<span id="crash-missions" class="hidden"> +<b>$0</b> missions</span><span id="crash-doubled" class="hidden"> (doubled)</span> · total <span id="crash-total">$0</span></div>
+      <button id="crash-goal" class="goal hidden"></button>
+      <div id="daily-crash" class="daily hidden"><span class="daily-text"></span><button class="btn btn-small btn-daily">COLLECT</button></div>
       <div class="menu-row">
         <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>
         <button id="btn-double" class="btn btn-reward hidden" title="Watch an ad to double this run's cash"></button>

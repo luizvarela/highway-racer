@@ -1113,3 +1113,259 @@ body.touch #hint {
   background: rgba(0, 0, 0, 0.75);
   pointer-events: none;
 }
+
+/* ---- missions, daily bonus, next goal ---- */
+
+.missions-box {
+  width: min(520px, 100%);
+  background: var(--panel);
+  padding: 10px 16px 12px;
+  border-radius: 10px;
+}
+
+.missions-box h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.missions {
+  display: grid;
+  gap: 6px;
+}
+
+.mission {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 52px 56px 26px;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  min-height: 26px;
+}
+
+.m-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-tag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  vertical-align: 1px;
+}
+
+.m-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.m-bar div {
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #ff2bd6);
+}
+
+.m-num {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.m-reward {
+  font-weight: 800;
+  color: var(--accent);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.m-swap {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  line-height: 24px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.m-swap:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.mission.done .m-text,
+.mission.done .m-num {
+  color: var(--good);
+}
+
+.mission.done .m-bar div {
+  background: var(--good);
+}
+
+.mission.done .m-reward {
+  color: var(--good);
+}
+
+/* the generic ".stats div" flex rule must not touch the mission rows */
+.stats.missions-card .missions {
+  display: grid;
+  gap: 5px;
+}
+
+.stats.missions-card .mission {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 50px 48px 52px 24px;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.stats.missions-card .mission > div {
+  display: block;
+}
+
+.stats.missions-card .m-bar div {
+  display: block;
+}
+
+.stats.missions-card {
+  flex-basis: 100%;
+}
+
+/* daily bonus card */
+.daily {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 194, 26, 0.6);
+  background: linear-gradient(90deg, rgba(255, 194, 26, 0.18), rgba(255, 194, 26, 0.05));
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.daily b {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.daily .muted {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.daily.claimed {
+  border-color: rgba(92, 240, 106, 0.6);
+  background: rgba(92, 240, 106, 0.12);
+}
+
+.daily.claimed .btn-daily {
+  display: none;
+}
+
+.daily.claimed b {
+  color: var(--good);
+}
+
+/* next goal link */
+.goal {
+  pointer-events: auto;
+  border: 0;
+  background: transparent;
+  color: #7ff6ff;
+  font: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+}
+
+.goal.ready {
+  color: var(--good);
+  text-shadow: 0 0 8px rgba(92, 240, 106, 0.5);
+}
+
+.goal:hover {
+  text-decoration: underline;
+}
+
+/* start screen on short desktop windows: drop the blurb so the missions fit */
+@media (max-height: 820px) {
+  .overlay {
+    gap: 10px;
+  }
+  #overlay-start .pitch,
+  #overlay-start .sub {
+    display: none;
+  }
+  .controls {
+    padding: 8px 16px;
+    gap: 3px;
+  }
+}
+
+@media (max-width: 600px) {
+  .mission {
+    grid-template-columns: minmax(0, 1fr) 34px 46px 50px 24px;
+    font-size: 12px;
+    gap: 5px;
+  }
+  .m-tag {
+    display: none;
+  }
+  /* the points breakdown is the first thing to go on a phone: results must fit without scrolling */
+  #overlay-crash .results .stats:first-child {
+    display: none;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .missions-box {
+    display: none; /* the start screen is tight already; missions show on the results screen */
+  }
+  #overlay-crash .results .stats:first-child {
+    display: none;
+  }
+  .results .stats,
+  .stats.missions-card {
+    flex-basis: 300px;
+  }
+  .stats.missions-card .mission {
+    grid-template-columns: minmax(0, 1fr) 44px 48px 22px;
+    font-size: 11px;
+    min-height: 20px;
+  }
+  .stats.missions-card .m-bar {
+    display: none;
+  }
+  .daily {
+    padding: 4px 8px 4px 12px;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .daily b {
+    font-size: 15px;
+  }
+  .goal {
+    font-size: 12px;
+  }
+}
