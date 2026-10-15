@@ -15,6 +15,11 @@
         <div class="label">SCORE</div>
         <div id="hud-score" class="value">0</div>
         <div class="label small">BEST <span id="hud-best">0</span></div>
+        <div id="hud-mult" class="hidden">
+          <div class="mult-value">x<span id="hud-mult-value">1</span></div>
+          <div class="mult-combo">COMBO <span id="hud-combo-count">0</span></div>
+          <div class="mult-bar"><div id="hud-combo-fill"></div></div>
+        </div>
       </div>
       <div class="hud-center">
         <div id="hud-heat">
@@ -26,7 +31,10 @@
           <div class="bust-label">BUSTING</div>
           <div class="bust-bar"><div id="hud-bust-fill"></div></div>
         </div>
-        <div id="hud-combo" class="hidden"></div>
+        <div id="hud-evade" class="hidden">
+          <div class="evade-label">EVADING</div>
+          <div class="evade-bar"><div id="hud-evade-fill"></div></div>
+        </div>
         <div id="popups"></div>
       </div>
       <div class="hud-right">
@@ -41,7 +49,7 @@
     <div id="overlay-start" class="overlay">
       <h1>HIGHWAY RACER</h1>
       <p class="sub">Prototype · getaway</p>
-      <p class="pitch">The police are on your tail. Stay faster than them, weave close past traffic to build combos, and make them crash.</p>
+      <p class="pitch">The police are on your tail. Stay faster than them to escape, weave close past traffic to build your multiplier, and make them crash.</p>
       <div class="controls">
         <div><kbd>↑</kbd>/<kbd>W</kbd> accelerate</div>
         <div><kbd>↓</kbd>/<kbd>S</kbd> brake</div>
@@ -53,15 +61,25 @@
 
     <div id="overlay-crash" class="overlay hidden">
       <h1 id="crash-title">CRASHED</h1>
-      <div class="stats">
-        <div><span>Score</span><b id="crash-score">0</b></div>
-        <div><span>Distance</span><b id="crash-distance">0.00 km</b></div>
-        <div><span>Top speed</span><b id="crash-top">0 km/h</b></div>
-        <div><span>Above 100 km/h</span><b id="crash-highspeed">0.0 s</b></div>
-        <div><span>Near misses</span><b id="crash-nearmiss">0</b></div>
-        <div><span>Takedowns</span><b id="crash-takedowns">0</b></div>
-        <div><span>Cops lost</span><b id="crash-lost">0</b></div>
-        <div><span>Wanted level</span><b id="crash-heat">★</b></div>
+      <div class="final-score"><span>SCORE</span><b id="crash-score">0</b></div>
+      <div class="results">
+        <div class="stats">
+          <h2>Points</h2>
+          <div><span>Driving</span><b id="pts-driving">0</b></div>
+          <div><span>Near misses</span><b id="pts-nearMiss">0</b></div>
+          <div><span>Takedowns</span><b id="pts-takedown">0</b></div>
+          <div><span>Cops lost</span><b id="pts-copLost">0</b></div>
+          <div><span>Escapes</span><b id="pts-escape">0</b></div>
+        </div>
+        <div class="stats">
+          <h2>Run</h2>
+          <div><span>Distance</span><b id="crash-distance">0.00 km</b></div>
+          <div><span>Top speed</span><b id="crash-top">0 km/h</b></div>
+          <div><span>Near misses</span><b id="crash-nearmiss">0</b></div>
+          <div><span>Best multiplier</span><b id="crash-mult">x1</b></div>
+          <div><span>Takedowns · escapes</span><b id="crash-police">0 · 0</b></div>
+          <div><span>Wanted level</span><b id="crash-heat">★</b></div>
+        </div>
       </div>
       <div id="crash-best" class="new-best hidden">NEW BEST!</div>
       <button id="btn-restart" class="btn">PLAY AGAIN (SPACE)</button>

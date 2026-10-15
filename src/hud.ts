@@ -1,3 +1,6 @@
+import { HEAT } from "./config";
+import { POINT_SOURCES, type PointSource } from "./scoring";
+
 // Thin wrapper over the DOM HUD and overlays declared in index.html.
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -9,13 +12,27 @@ export interface RunStats {
   highSpeedSeconds: number;
   nearMisses: number;
   bestCombo: number;
+  bestMultiplier: number;
   takedowns: number;
   copsLost: number;
+  escapes: number;
   maxLevel: number;
+  points: Record<PointSource, number>;
   end: "crashed" | "busted";
 }
 
-export type PopupKind = "near" | "takedown" | "lost";
+export interface ChaseView {
+  heat: number;
+  level: number;
+  bust: number; // 0..1
+  nearestCop: number | null; // metres behind (negative = alongside/ahead)
+  combo: number;
+  comboLeft: number; // 0..1 of the combo window left
+  multiplier: number;
+  evade: number; // 0..1 escape progress
+}
+
+export type PopupKind = "near" | "takedown" | "lost" | "multiplier" | "escape";
 
 export class Hud {
   private readonly hud = $("hud");
@@ -35,7 +52,12 @@ export class Hud {
   private readonly warnDist = $("hud-police-dist");
   private readonly siren = $("siren");
   private readonly popups = $("popups");
-  private readonly combo = $("hud-combo");
+  private readonly mult = $("hud-mult");
+  private readonly multValue = $("hud-mult-value");
+  private readonly comboCount = $("hud-combo-count");
+  private readonly comboFill = $("hud-combo-fill");
+  private readonly evade = $("hud-evade");
+  private readonly evadeFill = $("hud-evade-fill");
 
   constructor(onStart: () => void) {
     $("btn-start").addEventListener("click", onStart);
@@ -65,9 +87,10 @@ export class Hud {
     if (on) this.highSpeedTime.textContent = highSpeedStreak.toFixed(1);
   }
 
-  updateChase(heat: number, level: number, bust: number, nearestCop: number | null, combo: number, comboTimer: number): void {
+  updateChase(v: ChaseView): void {
+    const { level, bust, nearestCop } = v;
     this.stars.forEach((s, i) => s.classList.toggle("on", i < level));
-    this.heatFill.style.width = `${level >= 5 ? 100 : ((heat % 20) / 20) * 100}%`;
+    this.heatFill.style.width = `${level >= 5 ? 100 : ((v.heat % HEAT.perLevel) / HEAT.perLevel) * 100}%`;
 
     this.bust.classList.toggle("hidden", bust <= 0);
     this.bustFill.style.width = `${bust * 100}%`;
@@ -79,11 +102,14 @@ export class Hud {
     const proximity = close ? 1 - Math.max(0, nearestCop!) / 120 : 0;
     this.siren.style.opacity = String(Math.max(proximity * 0.85, bust));
 
-    this.combo.classList.toggle("hidden", combo < 2);
-    if (combo >= 2) {
-      this.combo.textContent = `COMBO x${combo}`;
-      this.combo.style.opacity = String(Math.min(1, comboTimer / 1));
-    }
+    this.evade.classList.toggle("hidden", v.evade <= 0 || bust > 0);
+    this.evadeFill.style.width = `${v.evade * 100}%`;
+
+    this.mult.classList.toggle("hidden", v.combo <= 0);
+    this.mult.dataset.level = String(v.multiplier);
+    this.multValue.textContent = String(v.multiplier);
+    this.comboCount.textContent = String(v.combo);
+    this.comboFill.style.width = `${v.comboLeft * 100}%`;
   }
 
   popup(text: string, kind: PopupKind): void {
@@ -99,21 +125,22 @@ export class Hud {
     this.popups.replaceChildren();
     this.bust.classList.add("hidden");
     this.warn.classList.add("hidden");
-    this.combo.classList.add("hidden");
+    this.mult.classList.add("hidden");
+    this.evade.classList.add("hidden");
     this.siren.style.opacity = "0";
   }
 
   showCrash(stats: RunStats, isBest: boolean): void {
     this.clearChase();
     $("crash-title").textContent = stats.end === "busted" ? "BUSTED" : "CRASHED";
-    $("crash-nearmiss").textContent = `${stats.nearMisses} (best x${stats.bestCombo})`;
-    $("crash-takedowns").textContent = String(stats.takedowns);
-    $("crash-lost").textContent = String(stats.copsLost);
-    $("crash-heat").textContent = "★".repeat(stats.maxLevel);
-    $("crash-score").textContent = String(Math.floor(stats.score));
+    $("crash-score").textContent = Math.floor(stats.score).toLocaleString("en-US");
+    for (const src of POINT_SOURCES) $(`pts-${src}`).textContent = stats.points[src].toLocaleString("en-US");
     $("crash-distance").textContent = `${stats.distanceKm.toFixed(2)} km`;
     $("crash-top").textContent = `${Math.round(stats.topSpeedKmh)} km/h`;
-    $("crash-highspeed").textContent = `${stats.highSpeedSeconds.toFixed(1)} s`;
+    $("crash-nearmiss").textContent = `${stats.nearMisses} (best combo ${stats.bestCombo})`;
+    $("crash-mult").textContent = `x${stats.bestMultiplier}`;
+    $("crash-police").textContent = `${stats.takedowns} · ${stats.escapes}`;
+    $("crash-heat").textContent = "★".repeat(stats.maxLevel);
     $("crash-best").classList.toggle("hidden", !isBest);
     this.crashOverlay.classList.remove("hidden");
   }

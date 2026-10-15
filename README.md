@@ -22,12 +22,27 @@ Touch: hold the left/right half of the screen to steer (auto-throttle), both hal
 - A cop within about one car length of you fills the **bust meter** (2.2 s);
   full means **BUSTED**. Hitting traffic still ends the run as **CRASHED**.
 - Cops steer around traffic with a short look-ahead, so weaving close past cars
-  can make them crash: **takedown** (+500). A cop that got close and then falls
-  160 m behind is **lost** (+300).
-- **Near miss**: overtaking a vehicle with less than 1.1 m of side clearance
-  scores 60 times the combo, which chains while near misses come within 3 s.
+  can make them crash: **takedown**. A cop that got close and then falls 160 m
+  behind is **lost**.
+- **Escape**: once a cop has been close, keep every cop more than 70 m behind
+  for 6 s + 2 s per star and the wanted level drops a star (bonus 400 per star
+  you had). At one star it's a clean getaway: the heat resets and the next cop
+  comes after a 6 s break.
 
-All of these numbers live in `HEAT`, `POLICE` and `SCORE` in `src/config.ts`.
+## Scoring
+
+Every point is multiplied by the **multiplier** (x1 to x5), so risky driving
+pays more than just driving far.
+
+- **Combo**: each near miss (overtaking with less than 1.1 m of side
+  clearance) adds 1, each takedown adds 2. Every 3 combo raises the multiplier
+  by one. The combo resets after 3.5 s without adding to it, or when the run ends.
+- **Points** (before the multiplier): driving (distance weighted by speed, plus
+  5/s above 100 km/h), near miss 100, takedown 500, cop lost 300, escape 400
+  per star.
+- The results screen breaks the score down by source.
+
+All of these numbers live in `HEAT`, `POLICE`, `ESCAPE` and `SCORE` in `src/config.ts`.
 
 ## Layout
 
@@ -40,7 +55,8 @@ All of these numbers live in `HEAT`, `POLICE` and `SCORE` in `src/config.ts`.
 | `src/police.ts` | Pursuit: spawning, slot formation, traffic avoidance, bust meter, light bars |
 | `src/vehicles.ts` | Loads the Kenney Car Kit models (CC0) and adds head/tail lights |
 | `src/environment.ts` | Skyline backdrop and speed lines |
-| `src/game.ts` | Loop, states, heat and scoring, chase camera, bloom |
+| `src/scoring.ts` | Combo, multiplier and points per source |
+| `src/game.ts` | Loop, states, heat and escapes, chase camera, bloom |
 | `src/input.ts`, `src/hud.ts` | Keyboard/touch input and DOM HUD |
 
 The player stays at z = 0 and the world scrolls past, so coordinates never grow.

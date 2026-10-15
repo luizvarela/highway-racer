@@ -232,6 +232,8 @@ kbd {
 }
 
 .hud-center {
+  /* dark halo so text stays readable over the bright sun */
+  text-shadow: 0 0 3px #000, 0 0 10px rgba(0, 0, 0, 0.9), 0 2px 2px #000;
   position: absolute;
   left: 50%;
   top: 14px;
@@ -309,11 +311,74 @@ kbd {
   }
 }
 
-#hud-combo {
-  font-weight: 800;
-  font-size: 22px;
+/* score multiplier, under the score */
+#hud-mult {
+  margin-top: 8px;
+  width: 110px;
+}
+
+.mult-value {
+  font-size: 40px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
   color: #7ff6ff;
-  text-shadow: 0 0 12px rgba(0, 229, 255, 0.8);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.8);
+}
+
+#hud-mult[data-level="3"] .mult-value,
+#hud-mult[data-level="4"] .mult-value {
+  color: #ff7ae6;
+  text-shadow: 0 0 14px rgba(255, 43, 214, 0.85);
+}
+
+#hud-mult[data-level="5"] .mult-value {
+  color: #ffc21a;
+  text-shadow: 0 0 16px rgba(255, 194, 26, 0.9);
+}
+
+.mult-combo {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.mult-bar,
+.evade-bar {
+  height: 5px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+#hud-combo-fill {
+  height: 100%;
+  width: 0;
+  background: #7ff6ff;
+}
+
+#hud-evade {
+  width: 100%;
+  text-align: center;
+}
+
+.evade-label {
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--good);
+}
+
+.evade-bar {
+  height: 8px;
+  border: 1px solid rgba(92, 240, 106, 0.7);
+}
+
+#hud-evade-fill {
+  height: 100%;
+  width: 0;
+  background: var(--good);
 }
 
 #popups {
@@ -341,6 +406,16 @@ kbd {
 
 .popup.lost {
   color: var(--good);
+}
+
+.popup.multiplier {
+  color: #ff7ae6;
+  font-size: 22px;
+}
+
+.popup.escape {
+  color: var(--good);
+  font-size: 24px;
 }
 
 @keyframes popup {
@@ -372,14 +447,68 @@ kbd {
   white-space: nowrap;
 }
 
+.overlay {
+  overflow-y: auto;
+  justify-content: safe center; /* tall results scroll instead of clipping the top */
+}
+
+.final-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.final-score span {
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  font-size: 13px;
+}
+
+.final-score b {
+  font-size: 44px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.results {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  width: min(600px, 100%);
+}
+
+.results .stats {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.stats h2 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.stats b {
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 600px) {
+  /* below the score and speed columns on narrow screens */
+  .hud-center {
+    top: 132px;
+    width: min(300px, 80vw);
+  }
+  .mult-value {
+    font-size: 30px;
+  }
   #hud-heat .stars {
     font-size: 18px;
   }
   .popup {
     font-size: 14px;
-  }
-  #hud-combo {
-    font-size: 16px;
   }
 }

@@ -73,9 +73,28 @@ export const POLICE = {
 };
 
 export const SCORE = {
-  nearMiss: 60, // times the combo multiplier
+  // driving: points per metre at 100 km/h (scales with speed), plus a per-second bonus above HIGH_SPEED_KMH
+  perMetre: 0.1,
+  highSpeedPerSecond: 5,
+  nearMiss: 100,
   nearMissGap: 1.1, // metres of side clearance that counts as a near miss
-  comboWindow: 3, // seconds to chain the next near miss
   takedown: 500,
   copLost: 300,
+  // every near miss adds 1 to the combo, a takedown adds 2; the combo resets
+  // when nothing adds to it for comboWindow seconds
+  comboWindow: 3.5,
+  comboPerStep: 3, // combo needed per +1 on the multiplier
+  maxMultiplier: 5, // the multiplier applies to every point scored
+  takedownCombo: 2,
+};
+
+// Escaping: once a cop has been close, keep every cop more than clearDistance
+// behind for a while and the wanted level drops a star.
+export const ESCAPE = {
+  clearDistance: 70, // metres
+  baseSeconds: 6, // plus perLevelSeconds per wanted star
+  perLevelSeconds: 2,
+  drainSeconds: 1.5, // how fast progress drains while a cop is close
+  bonusPerLevel: 400,
+  cooldown: 6, // seconds before the next cop after an escape
 };

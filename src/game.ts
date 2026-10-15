@@ -3,13 +3,14 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { FOG_FAR, FOG_NEAR, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
+import { ESCAPE, FOG_FAR, FOG_NEAR, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { Skyline, SpeedLines } from "./environment";
 import { Hud, type RunStats } from "./hud";
 import { Input } from "./input";
 import { Player } from "./player";
 import { Police } from "./police";
 import { Road } from "./road";
+import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
 import { loadVehicles } from "./vehicles";
 
@@ -23,7 +24,9 @@ const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
 function newStats(): RunStats {
   return {
     score: 0, distanceKm: 0, topSpeedKmh: 0, highSpeedSeconds: 0,
-    nearMisses: 0, bestCombo: 0, takedowns: 0, copsLost: 0, maxLevel: 1, end: "crashed",
+    nearMisses: 0, bestCombo: 0, bestMultiplier: 1, takedowns: 0, copsLost: 0, escapes: 0, maxLevel: 1,
+    points: { driving: 0, nearMiss: 0, takedown: 0, copLost: 0, escape: 0 },
+    end: "crashed",
   };
 }
 
@@ -63,9 +66,10 @@ export class Game {
   private readonly police = new Police();
   private stats: RunStats = newStats();
   private highSpeedStreak = 0;
+  private readonly scoring = new Scoring();
   private heat = 0;
-  private combo = 0;
-  private comboTimer = 0;
+  private pursuit = false; // a cop has been close since the last escape
+  private evade = 0; // 0..1 progress towards escaping
   private crashTimer = 0;
   private shake = 0;
   private best = loadBest();
@@ -140,6 +144,8 @@ export class Game {
       get level() { return game.level; },
       get bust() { return game.police.bust; },
       get cops() { return game.police.snapshot(); },
+      get multiplier() { return game.scoring.multiplier; },
+      get evade() { return game.evade; },
       get obstacles() { return game.traffic.obstacles(); },
       /** test-only: stop real-time simulation and advance it in fixed 1/60 s steps */
       advance(seconds: number) {
@@ -164,9 +170,10 @@ export class Game {
     this.traffic.reset();
     this.police.reset();
     this.stats = newStats();
+    this.scoring.reset();
     this.heat = 0;
-    this.combo = 0;
-    this.comboTimer = 0;
+    this.pursuit = false;
+    this.evade = 0;
     this.highSpeedStreak = 0;
     this.crashTimer = 0;
     this.shake = 0;
@@ -233,7 +240,18 @@ export class Game {
 
     if (this.state !== "ready") {
       this.hud.update(this.stats, this.player.speedKmh, this.highSpeedStreak);
-      if (this.state === "running") this.hud.updateChase(this.heat, this.level, this.police.bust, this.police.nearest, this.combo, this.comboTimer);
+      if (this.state === "running") {
+        this.hud.updateChase({
+          heat: this.heat,
+          level: this.level,
+          bust: this.police.bust,
+          nearestCop: this.police.nearest,
+          combo: this.scoring.combo,
+          comboLeft: this.scoring.comboLeft,
+          multiplier: this.scoring.multiplier,
+          evade: this.pursuit ? this.evade : 0,
+        });
+      }
     }
     const speedT = this.speedT();
     this.speedLines.update(speedT, dz, this.player.x);
@@ -246,16 +264,15 @@ export class Game {
   }
 
   private policeEvents(ev: { takedowns: number; lost: number; bumpSide: number }): void {
-    if (ev.takedowns) {
-      this.stats.takedowns += ev.takedowns;
-      this.stats.score += SCORE.takedown * ev.takedowns;
-      this.heat += HEAT.takedown * ev.takedowns;
-      this.hud.popup(`TAKEDOWN +${SCORE.takedown * ev.takedowns}`, "takedown");
+    for (let i = 0; i < ev.takedowns; i++) {
+      this.stats.takedowns++;
+      this.heat += HEAT.takedown;
+      this.chain(SCORE.takedownCombo);
+      this.hud.popup(`TAKEDOWN +${this.scoring.award("takedown", SCORE.takedown)}`, "takedown");
     }
-    if (ev.lost) {
-      this.stats.copsLost += ev.lost;
-      this.stats.score += SCORE.copLost * ev.lost;
-      this.hud.popup(`COP LOST +${SCORE.copLost * ev.lost}`, "lost");
+    for (let i = 0; i < ev.lost; i++) {
+      this.stats.copsLost++;
+      this.hud.popup(`COP LOST +${this.scoring.award("copLost", SCORE.copLost)}`, "lost");
     }
     if (ev.bumpSide) {
       this.player.bump(ev.bumpSide);
@@ -263,11 +280,48 @@ export class Game {
     }
   }
 
+  private chain(steps: number): void {
+    if (this.scoring.chain(steps)) this.hud.popup(`MULTIPLIER x${this.scoring.multiplier}`, "multiplier");
+  }
+
+  /** Stay clear of the cops long enough and the wanted level drops a star. */
+  private updateEscape(dt: number): void {
+    const near = this.police.nearest;
+    const close = near !== null && near < ESCAPE.clearDistance;
+    if (close) this.pursuit = true;
+    if (!this.pursuit) return;
+
+    if (close) {
+      this.evade = Math.max(0, this.evade - dt / ESCAPE.drainSeconds);
+      return;
+    }
+    this.evade += dt / (ESCAPE.baseSeconds + ESCAPE.perLevelSeconds * this.level);
+    if (this.evade < 1) return;
+
+    const from = this.level;
+    const bonus = this.scoring.award("escape", ESCAPE.bonusPerLevel * from);
+    this.heat = Math.max(0, (from - 2) * HEAT.perLevel); // start of the level below
+    this.stats.escapes++;
+    this.police.standDown(ESCAPE.cooldown);
+    this.pursuit = false;
+    this.evade = 0;
+    const label = from > 1 ? `ESCAPED ${"★".repeat(from - 1)}` : "CLEAN GETAWAY";
+    this.hud.popup(`${label} +${bonus}`, "escape");
+  }
+
   private end(reason: RunStats["end"]): void {
     this.stats.end = reason;
     this.state = "crashed";
     this.highSpeedStreak = 0;
-    this.combo = 0;
+    this.scoring.breakCombo();
+    this.syncScore();
+  }
+
+  private syncScore(): void {
+    this.stats.score = this.scoring.total;
+    this.stats.points = this.scoring.breakdown();
+    this.stats.bestCombo = this.scoring.bestCombo;
+    this.stats.bestMultiplier = this.scoring.bestMultiplier;
   }
 
   private speedT(): number {
@@ -283,33 +337,32 @@ export class Game {
     this.stats.distanceKm += metres / 1000;
     this.stats.topSpeedKmh = Math.max(this.stats.topSpeedKmh, kmh);
 
-    // score: distance, weighted by speed; bonus while above HIGH_SPEED_KMH
-    this.stats.score += metres * 0.1 * (kmh / 100);
+    // driving points: distance weighted by speed, plus a bonus above HIGH_SPEED_KMH
+    this.scoring.update(dt);
+    let driving = metres * SCORE.perMetre * (kmh / 100);
     if (kmh >= HIGH_SPEED_KMH) {
       this.highSpeedStreak += dt;
       this.stats.highSpeedSeconds += dt;
-      this.stats.score += dt * 5;
+      driving += dt * SCORE.highSpeedPerSecond;
     } else {
       this.highSpeedStreak = 0;
     }
+    this.scoring.award("driving", driving);
 
     // heat builds on its own and faster when driving flat out
     this.heat += dt * (HEAT.perSecond + (kmh >= HEAT.fastKmh ? HEAT.perSecondFast : 0));
 
-    // near misses chain into a combo while they keep coming
-    this.comboTimer -= dt;
-    if (this.comboTimer <= 0) this.combo = 0;
+    // near misses build the combo, and with it the multiplier
     const misses = this.traffic.nearMisses(p.x, p.halfWidth);
     for (let i = 0; i < misses; i++) {
-      this.combo++;
-      this.comboTimer = SCORE.comboWindow;
       this.stats.nearMisses++;
-      this.stats.bestCombo = Math.max(this.stats.bestCombo, this.combo);
-      this.stats.score += SCORE.nearMiss * this.combo;
       this.heat += HEAT.nearMiss;
-      this.hud.popup(`NEAR MISS${this.combo > 1 ? ` x${this.combo}` : ""} +${SCORE.nearMiss * this.combo}`, "near");
+      this.chain(1);
+      this.hud.popup(`NEAR MISS +${this.scoring.award("nearMiss", SCORE.nearMiss)}`, "near");
     }
+    this.updateEscape(dt);
     this.stats.maxLevel = Math.max(this.stats.maxLevel, this.level);
+    this.syncScore();
 
     const side = this.traffic.collide({ x: p.x, z: 0, halfWidth: p.halfWidth * 0.95, halfLength: p.halfLength * 0.95 });
     if (side !== 0) {

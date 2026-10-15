@@ -115,6 +115,13 @@ export class Police {
     for (const l of this.lights) l.intensity = 0;
   }
 
+  /** After an escape: the chasing cops give up and the next one waits `delay` seconds. Wrecks keep rolling. */
+  standDown(delay: number): void {
+    for (const c of this.cops) if (c.active && !c.crashed) this.deactivate(c);
+    this.spawnTimer = delay;
+    this.bust = 0;
+  }
+
   private deactivate(c: Cop): void {
     c.active = false;
     c.model.group.visible = false;
