@@ -79,24 +79,54 @@ function gridTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** Building facade: dark wall with a random pattern of lit windows. */
-function windowsTexture(colors: string[]): THREE.CanvasTexture {
-  const [c, ctx] = canvas(128, 256);
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, 128, 256);
-  for (let y = 6; y < 256; y += 12) {
-    for (let x = 6; x < 128; x += 12) {
-      if (Math.random() < 0.38) {
-        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-        ctx.globalAlpha = 0.5 + Math.random() * 0.5;
-        ctx.fillRect(x, y, 6, 7);
-      }
-    }
+/** Loaded once and shared: AI-painted facade photo plus a map of just its lit windows. */
+const textureCache = new Map<string, THREE.Texture>();
+function envTexture(name: string): THREE.Texture {
+  let t = textureCache.get(name);
+  if (!t) {
+    t = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}env/${name}.webp`);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    textureCache.set(name, t);
   }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
+}
+
+export type Facade = "glass" | "apartment" | "warehouse";
+const FACADE_TILE: Record<Facade, number> = { glass: 34, apartment: 26, warehouse: 18 }; // metres per image
+
+/**
+ * Facade material that tiles at real-world size whatever the box's scale:
+ * UVs come from the scaled object-space position (not world space, so the
+ * texture doesn't slide as the chunk scrolls).
+ */
+function facadeMaterial(facade: Facade, tint: number): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({
+    map: envTexture(`facade-${facade}`),
+    emissiveMap: envTexture(`facade-${facade}-glow`),
+    color: 0x9a96a8,
+    emissive: tint,
+    emissiveIntensity: 1.5,
+    roughness: 0.85,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.facadeTile = { value: FACADE_TILE[facade] };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float facadeTile;")
+      .replace(
+        "#include <uv_vertex>",
+        `#include <uv_vertex>
+        vec3 fScale = vec3(length(modelMatrix[0].xyz), length(modelMatrix[1].xyz), length(modelMatrix[2].xyz));
+        vec3 fp = position * fScale + vec3(0.0, fScale.y * 0.5, 0.0); // y from the ground up
+        vec2 fuv = abs(normal.x) > 0.5 ? fp.zy : abs(normal.z) > 0.5 ? fp.xy : fp.xz;
+        fuv /= facadeTile;
+        vMapUv = fuv;
+        vEmissiveMapUv = fuv;`,
+      );
+  };
+  mat.customProgramCacheKey = () => `facade-${facade}`;
+  return mat;
 }
 
 /** Tunnel wall: concrete panels with a faint joint every 4 m. */
@@ -129,13 +159,14 @@ export interface District {
   lamp: number; // street lamp heads
   grid: number; // ground grid
   roofs: number[]; // neon roof trims
-  windows: string[]; // lit window colours
+  facades: Facade[]; // building fronts to pick from
+  glow: number; // tint of the lit windows
 }
 
 export const DISTRICTS: District[] = [
-  { name: "NEON DOWNTOWN", rail: NEON_PINK, lamp: NEON_CYAN, grid: 0xb21fd0, roofs: [NEON_PINK, NEON_CYAN, 0xffb000], windows: ["#ffd27a", "#7ff6ff", "#ff7ae6", "#fff1c9"] },
-  { name: "GOLD UPTOWN", rail: 0xffa21a, lamp: 0xfff0c8, grid: 0x14a6a0, roofs: [0xffc23a, 0x2af0d8, 0xfff0c8], windows: ["#ffd27a", "#ffe9b0", "#9ff5ea", "#fff6dc"] },
-  { name: "ULTRAVIOLET", rail: 0x9dff3a, lamp: 0xb36bff, grid: 0x6a2bff, roofs: [0xb36bff, 0x9dff3a, 0xff3a8c], windows: ["#c9a0ff", "#b8ff7a", "#ff8ad0", "#e6dcff"] },
+  { name: "NEON DOWNTOWN", rail: NEON_PINK, lamp: NEON_CYAN, grid: 0xb21fd0, roofs: [NEON_PINK, NEON_CYAN, 0xffb000], facades: ["glass", "apartment", "glass"], glow: 0xffffff },
+  { name: "GOLD UPTOWN", rail: 0xffa21a, lamp: 0xfff0c8, grid: 0x14a6a0, roofs: [0xffc23a, 0x2af0d8, 0xfff0c8], facades: ["glass"], glow: 0xffe2b0 },
+  { name: "ULTRAVIOLET", rail: 0x9dff3a, lamp: 0xb36bff, grid: 0x6a2bff, roofs: [0xb36bff, 0x9dff3a, 0xff3a8c], facades: ["apartment", "glass", "apartment"], glow: 0xe0c8ff },
 ];
 
 /** What the road ahead looks like: city blocks with a tunnel every so often. */
@@ -177,7 +208,7 @@ interface Chunk {
   city: THREE.Group;
   tunnel: THREE.Group;
   portal: THREE.Group;
-  buildings: { body: THREE.Mesh; roof: THREE.Mesh }[];
+  buildings: { body: THREE.Mesh; roof: THREE.Mesh; shop: THREE.Mesh }[];
   billboard: THREE.Group;
   poster: THREE.Mesh;
 }
@@ -195,8 +226,9 @@ export class Road {
   private readonly chunks: Chunk[] = [];
   private readonly sequence = new DistrictSequence();
   private readonly posterMats: THREE.Material[];
+  private readonly shopMats: THREE.Material[];
   private readonly mats: {
-    tube: THREE.Material; lamp: THREE.Material; ground: THREE.Material; building: THREE.Material; roofs: THREE.Material[];
+    tube: THREE.Material; lamp: THREE.Material; ground: THREE.Material; buildings: THREE.Material[]; roofs: THREE.Material[];
   }[];
   /** metres scrolled since the run started (tunnel lamp rhythm) */
   travelled = 0;
@@ -216,9 +248,7 @@ export class Road {
       tube: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: d.rail, emissiveIntensity: 3 }),
       lamp: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: d.lamp, emissiveIntensity: 5 }),
       ground: new THREE.MeshStandardMaterial({ color: 0x07040f, emissive: d.grid, emissiveMap: gridTex, emissiveIntensity: 0.9, roughness: 1 }),
-      building: new THREE.MeshStandardMaterial({
-        color: 0x0c0b16, emissive: 0xffffff, emissiveMap: windowsTexture(d.windows), emissiveIntensity: 0.75, roughness: 0.8,
-      }),
+      buildings: d.facades.map((f) => facadeMaterial(f, d.glow)),
       roofs: d.roofs.map((c) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c, emissiveIntensity: 3 })),
     }));
     const railMat = new THREE.MeshStandardMaterial({ color: 0x2a2d38, metalness: 0.7, roughness: 0.35 });
@@ -232,6 +262,15 @@ export class Road {
       t.anisotropy = 8;
       return new THREE.MeshBasicMaterial({ map: t, color: 0xd8d8d8 }); // lit from within; a bit under 1 so bloom stays soft
     });
+    // street-level shopfronts: half of the strip each, so neighbours differ
+    this.shopMats = [0, 0.5].map((offset) => {
+      const t = envTexture("shopfront").clone();
+      t.wrapS = THREE.ClampToEdgeWrapping;
+      t.repeat.x = 0.5;
+      t.offset.x = offset;
+      return new THREE.MeshBasicMaterial({ map: t, color: 0xc8c8c8 });
+    });
+    const shopGeo = new THREE.PlaneGeometry(1, 1);
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x15151c, roughness: 0.6, metalness: 0.4 });
     // tunnel
     const wallMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.85 });
@@ -242,10 +281,7 @@ export class Road {
     );
     const kerbMat = new THREE.MeshStandardMaterial({ color: 0x55555f, roughness: 0.8 });
     // the facade texture tiled at building scale (one tile ~ 10 x 20 m) on the big tunnel block
-    const blockTex = (base.building as THREE.MeshStandardMaterial).emissiveMap!.clone();
-    blockTex.repeat.set(17, 1.3);
-    const blockMat = (base.building as THREE.MeshStandardMaterial).clone();
-    blockMat.emissiveMap = blockTex;
+    const blockMat = facadeMaterial("glass", 0xffffff);
     const portalTex = concreteTexture();
     portalTex.repeat.set(20, 3);
     const portalMat = new THREE.MeshStandardMaterial({ map: portalTex, roughness: 0.85 });
@@ -323,10 +359,11 @@ export class Road {
       // city blocks on both sides with lit windows and neon roof trims
       const buildings: Chunk["buildings"] = [];
       for (let b = 0; b < buildingsPerSide * 2; b++) {
-        const bodyMesh = new THREE.Mesh(buildingGeo, base.building);
+        const bodyMesh = new THREE.Mesh(buildingGeo, base.buildings[0]);
         const roof = new THREE.Mesh(roofGeo, base.roofs[0]);
-        city.add(bodyMesh, roof);
-        buildings.push({ body: bodyMesh, roof });
+        const shop = new THREE.Mesh(shopGeo, this.shopMats[0]);
+        city.add(bodyMesh, roof, shop);
+        buildings.push({ body: bodyMesh, roof, shop });
       }
 
       // roadside billboard: poster in a dark frame on two legs
@@ -441,7 +478,7 @@ export class Road {
     c.ground.material = mats.ground;
     // fresh skyline for every city chunk so blocks never visibly repeat
     const per = c.buildings.length / 2;
-    c.buildings.forEach(({ body, roof }, b) => {
+    c.buildings.forEach(({ body, roof, shop }, b) => {
       const bSide = b < per ? -1 : 1;
       const slot = b % per;
       const w = 10 + Math.random() * 12;
@@ -451,10 +488,16 @@ export class Road {
       const x = bSide * (RAIL_X + 30 + Math.random() * 55 + w / 2);
       const z = -CHUNK_LENGTH / 2 + (slot + 0.5) * (CHUNK_LENGTH / per);
       body.position.set(x, h / 2, z);
-      body.material = mats.building;
+      body.material = mats.buildings[Math.floor(Math.random() * mats.buildings.length)];
       roof.material = mats.roofs[Math.floor(Math.random() * mats.roofs.length)];
       roof.scale.set(w + 0.3, 1, d + 0.3);
       roof.position.set(x, h, z);
+      // shopfront on the side that faces the road (half the strip: ~1.8 : 1)
+      const sh = d / 1.79;
+      shop.scale.set(d, sh, 1);
+      shop.position.set(x - bSide * (w / 2 + 0.05), sh / 2, z);
+      shop.rotation.y = bSide < 0 ? Math.PI / 2 : -Math.PI / 2;
+      shop.material = this.shopMats[Math.floor(Math.random() * this.shopMats.length)];
     });
   }
 
