@@ -10,13 +10,14 @@ export type VehicleKind =
   | "sedan" | "sedan-sports" | "hatchback-sports" | "suv" | "suv-luxury" | "taxi"
   | "van" | "delivery" | "truck" | "truck-flat" | "garbage-truck" | "ambulance"
   | "firetruck" | "police" | "race-future"
-  | "hero-comet" | "hero-viper" | "hero-bruiser" | "hero-phantom";
+  | "hero-comet" | "hero-viper" | "hero-bruiser" | "hero-phantom" | "hero-bus" | "hero-truck";
 
 const LENGTH_M: Record<VehicleKind, number> = {
   sedan: 4.6, "sedan-sports": 4.5, "hatchback-sports": 4.1, suv: 4.8, "suv-luxury": 4.9, taxi: 4.6,
   van: 5.2, delivery: 6.2, truck: 6.8, "truck-flat": 6.8, "garbage-truck": 8.2, ambulance: 6.0,
   firetruck: 9.0, police: 4.8, "race-future": 4.4,
   "hero-comet": 4.6, "hero-viper": 4.1, "hero-bruiser": 4.9, "hero-phantom": 4.5,
+  "hero-bus": 12, "hero-truck": 7.2,
 };
 
 // Hero models: AI-generated (Tripo) and shrunk by scripts/import-model.sh.
@@ -28,10 +29,12 @@ const HERO_FILES: Partial<Record<VehicleKind, string>> = {
   "hero-bruiser": "../hero/bruiser.glb",
   "hero-phantom": "../hero/phantom.glb",
   police: "../hero/police.glb",
+  "hero-bus": "../hero/bus.glb", // traffic models are imported at a third of the detail
+  "hero-truck": "../hero/truck.glb",
 };
 const isHero = (kind: VehicleKind) => kind in HERO_FILES;
 // light paint goes past the bloom threshold under the neon reflections: dim it
-const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72 };
+const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72, "hero-truck": 0.75 };
 
 /** Reflections for the glossy hero paint: a dark room with neon strips. */
 let heroEnv: THREE.Texture | null = null;

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Shrink a raw Tripo GLB into a game-ready model.
-# usage: scripts/import-model.sh assets-src/tripo/comet.glb public/models/hero/comet.glb [ratio]
+# usage: scripts/import-model.sh assets-src/tripo/comet.glb public/models/hero/comet.glb [ratio] [yaw degrees]
 set -e
-in="$1"; out="$2"; ratio="${3:-0.03}"
+in="$1"; out="$2"; ratio="${3:-0.03}"; yaw="${4:-0}"
 tmp=$(mktemp -d)
 G=node_modules/.bin/gltf-transform
 $G weld "$in" "$tmp/a.glb"
@@ -11,6 +11,7 @@ node scripts/strip-maps.mjs "$tmp/b.glb"
 node scripts/smooth-normals.mjs "$tmp/b.glb" 8
 $G resize "$tmp/b.glb" "$tmp/c.glb" --width 2048 --height 2048
 $G webp "$tmp/c.glb" "$tmp/d.glb" --quality 85
+[ "$yaw" != 0 ] && node scripts/rotate-model.mjs "$tmp/d.glb" "$yaw"
 $G meshopt "$tmp/d.glb" "$out"
 rm -rf "$tmp"
 ls -la "$out"
