@@ -18,7 +18,7 @@ import { Player } from "./player";
 import { Police } from "./police";
 import { Road } from "./road";
 import type { AdResult, Portal } from "./portal";
-import { loadSave, writeSave, type SaveData } from "./save";
+import { loadSave, SAVE_KEY, writeSave, type SaveData, type SaveStore } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
 import { loadProps, loadVehicles, setVehicleEnvironment } from "./vehicles";
@@ -28,6 +28,12 @@ type State = "loading" | "ready" | "garage" | "running" | "crashed";
 const NIGHT = 0x1a0b2e;
 const MAX_STEP_HZ = 120; // physics steps per second at least, whatever the display rate
 const CRASH_OVERLAY_DELAY = 1.1; // seconds of crash animation before the results panel
+const DEV = new URLSearchParams(location.search).has("dev");
+const DEV_CASH = 9_999_999;
+const devStore = (base: SaveStore): SaveStore => ({
+  getItem: (k) => base.getItem(`${k}.dev`),
+  setItem: (k, v) => base.setItem(`${k}.dev`, v),
+});
 const MODELS_URL = `${import.meta.env.BASE_URL}models/kenney/`;
 
 function newStats(): RunStats {
@@ -65,6 +71,7 @@ export class Game {
   private evade = 0; // 0..1 progress towards escaping
   private crashTimer = 0;
   private shake = 0;
+  private readonly store: SaveStore;
   private readonly save: SaveData;
   private readonly garage: Garage;
   private garageAngle = 0;
@@ -96,7 +103,11 @@ export class Game {
   }
 
   private constructor(container: HTMLElement, private readonly portal: Portal) {
-    this.save = loadSave(portal.storage);
+    // ?dev: test mode with its own save (a copy of the real one at first),
+    // unlimited cash and a reset button. Real progress is never touched.
+    this.store = DEV ? devStore(portal.storage) : portal.storage;
+    this.save = loadSave(this.store);
+    if (DEV) this.save.cash = DEV_CASH;
     fillMissions(this.save.missions, this.save.missionsDone);
     this.sound = new Sound(this.save.muted);
     portal.onForcedMute((m) => this.sound.setForcedMute(m));
@@ -175,7 +186,10 @@ export class Game {
     this.garage = new Garage({
       save: this.save,
       preview: (car, stats) => this.player.setCar(car, stats),
-      commit: () => writeSave(this.portal.storage, this.save),
+      commit: () => {
+        if (DEV) this.save.cash = DEV_CASH;
+        writeSave(this.store, this.save);
+      },
       purchased: () => this.sound.buy(),
       drive: () => {
         this.closeGarage();
@@ -249,6 +263,18 @@ export class Game {
       }, 300);
     }
 
+    if (DEV) {
+      const reset = document.createElement("button");
+      reset.id = "dev-reset";
+      reset.textContent = "DEV · reset progress";
+      reset.addEventListener("click", () => {
+        if (!confirm("Reset test progress? (your real save is not affected)")) return;
+        this.store.setItem(SAVE_KEY, ""); // unreadable save = start fresh
+        location.reload();
+      });
+      document.body.appendChild(reset);
+    }
+
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -291,7 +317,7 @@ export class Game {
     this.save.muted = !this.save.muted;
     this.sound.setMuted(this.save.muted);
     this.hud.setMuted(this.save.muted);
-    writeSave(this.portal.storage, this.save);
+    writeSave(this.store, this.save);
   }
 
   private start(): void {
@@ -331,7 +357,7 @@ export class Game {
     const cash = claimDaily(this.save.daily);
     if (cash <= 0) return;
     this.save.cash += cash;
-    writeSave(this.portal.storage, this.save);
+    writeSave(this.store, this.save);
     this.hud.dailyClaimed(cash);
     this.hud.showGoal(nextGoal(this.save.cash, this.save.cars, this.save.selected));
     this.hud.setCash(this.save.cash);
@@ -348,7 +374,7 @@ export class Game {
     const others = this.save.missions.filter((_, i) => i !== index);
     this.save.missions[index] = drawMission(others, this.save.missionsDone);
     this.save.rerollDay = today();
-    writeSave(this.portal.storage, this.save);
+    writeSave(this.store, this.save);
     this.hud.replaceMission(index, viewMission(this.save.missions[index]));
     this.sound.click();
   }
@@ -583,7 +609,7 @@ export class Game {
     const missions = applyRun(this.save.missions, this.stats, this.save.missionsDone);
     this.save.missionsDone += missions.completed.length;
     this.save.cash += missions.cash;
-    writeSave(this.portal.storage, this.save);
+    writeSave(this.store, this.save);
     this.lastEarned = earned;
     this.doubled = false;
     if (isBest && previousBest > 0 && !this.celebrated) {
@@ -628,7 +654,7 @@ export class Game {
     }
     this.doubled = true;
     this.save.cash += this.lastEarned;
-    writeSave(this.portal.storage, this.save);
+    writeSave(this.store, this.save);
     this.hud.cashDoubled(this.lastEarned * 2, this.save.cash);
     this.hud.showGoal(nextGoal(this.save.cash, this.save.cars, this.save.selected));
     this.sound.buy();

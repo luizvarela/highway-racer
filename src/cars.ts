@@ -30,17 +30,17 @@ export const CARS: CarDef[] = [
   },
   {
     id: "viper", name: "Viper", blurb: "Light hatch that darts between lanes.",
-    model: "hatchback-sports", price: 3000, glow: 0xff2bd6,
+    model: "hero-viper", price: 3000, glow: 0xff2bd6,
     topSpeedKmh: 215, accel: 7.5, steerSpeed: 12, toughness: 0.9, upgradeCost: 400,
   },
   {
     id: "bruiser", name: "Bruiser", blurb: "Heavy luxury SUV. Cops struggle to box it in.",
-    model: "suv-luxury", price: 6500, glow: 0xff8a1a,
+    model: "hero-bruiser", price: 6500, glow: 0xff8a1a,
     topSpeedKmh: 220, accel: 7, steerSpeed: 9.5, toughness: 1.6, upgradeCost: 600,
   },
   {
     id: "phantom", name: "Phantom", blurb: "Prototype racer. Outruns anything with a siren.",
-    model: "race-future", price: 15000, glow: 0x9dff3a,
+    model: "hero-phantom", price: 15000, glow: 0x9dff3a,
     topSpeedKmh: 240, accel: 8.5, steerSpeed: 12.5, toughness: 1, upgradeCost: 900,
   },
 ];

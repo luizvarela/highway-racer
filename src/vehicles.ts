@@ -10,13 +10,13 @@ export type VehicleKind =
   | "sedan" | "sedan-sports" | "hatchback-sports" | "suv" | "suv-luxury" | "taxi"
   | "van" | "delivery" | "truck" | "truck-flat" | "garbage-truck" | "ambulance"
   | "firetruck" | "police" | "race-future"
-  | "hero-comet";
+  | "hero-comet" | "hero-viper" | "hero-bruiser" | "hero-phantom";
 
 const LENGTH_M: Record<VehicleKind, number> = {
   sedan: 4.6, "sedan-sports": 4.5, "hatchback-sports": 4.1, suv: 4.8, "suv-luxury": 4.9, taxi: 4.6,
   van: 5.2, delivery: 6.2, truck: 6.8, "truck-flat": 6.8, "garbage-truck": 8.2, ambulance: 6.0,
   firetruck: 9.0, police: 4.8, "race-future": 4.4,
-  "hero-comet": 4.6,
+  "hero-comet": 4.6, "hero-viper": 4.1, "hero-bruiser": 4.9, "hero-phantom": 4.5,
 };
 
 // Hero models: AI-generated (Tripo) and shrunk by scripts/import-model.sh.
@@ -24,8 +24,13 @@ const LENGTH_M: Record<VehicleKind, number> = {
 // face +Z like the kit models.
 const HERO_FILES: Partial<Record<VehicleKind, string>> = {
   "hero-comet": "../hero/comet.glb",
+  "hero-viper": "../hero/viper.glb",
+  "hero-bruiser": "../hero/bruiser.glb",
+  "hero-phantom": "../hero/phantom.glb",
 };
 const isHero = (kind: VehicleKind) => kind in HERO_FILES;
+// light paint goes past the bloom threshold under the neon reflections: dim it
+const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72 };
 
 /** Reflections for the glossy hero paint: a dark room with neon strips. */
 let heroEnv: THREE.Texture | null = null;
@@ -44,14 +49,15 @@ export function setVehicleEnvironment(renderer: THREE.WebGLRenderer): void {
   const pmrem = new THREE.PMREMGenerator(renderer);
   heroEnv = pmrem.fromScene(room, 0.04).texture;
   pmrem.dispose();
-  for (const [kind, t] of templates) if (isHero(kind)) applyEnv(t);
+  for (const [kind, t] of templates) if (isHero(kind)) applyEnv(t, kind);
 }
 
-function applyEnv(root: THREE.Object3D): void {
+function applyEnv(root: THREE.Object3D, kind: VehicleKind): void {
   if (!heroEnv) return;
   root.traverse((o) => {
     const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (mat?.isMeshStandardMaterial) {
+      mat.color.setScalar(HERO_SHADE[kind] ?? 1);
       // gloss is set at import (scripts/strip-maps.mjs): an even paint finish
       mat.envMap = heroEnv;
       mat.envMapIntensity = 1.4;
@@ -83,7 +89,7 @@ export async function loadVehicles(kinds: VehicleKind[], baseUrl: string): Promi
       gltf.scene.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) o.castShadow = true;
       });
-      if (isHero(kind)) applyEnv(gltf.scene);
+      if (isHero(kind)) applyEnv(gltf.scene, kind);
       templates.set(kind, gltf.scene);
     }),
   );

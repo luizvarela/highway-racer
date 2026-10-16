@@ -1369,3 +1369,11 @@ body.touch #hint {
     font-size: 12px;
   }
 }
+
+/* ?dev test mode */
+#dev-reset {
+  position: fixed; right: 8px; bottom: 8px; z-index: 50;
+  font: 600 11px/1 system-ui, sans-serif; padding: 6px 10px; border-radius: 6px;
+  color: #fff; background: rgba(200, 30, 60, 0.85); border: 0; cursor: pointer;
+}
+body.driving #dev-reset { display: none; }
