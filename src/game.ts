@@ -279,7 +279,7 @@ export class Game {
       box.id = "debug-audio";
       document.body.appendChild(box);
       setInterval(() => {
-        box.textContent = `audio: ${this.sound.state}\n${this.sound.log.join("\n")}`;
+        box.textContent = `audio: ${this.sound.state}\nmusic: ${this.sound.musicState}\n${this.sound.log.join("\n")}`;
       }, 300);
     }
 

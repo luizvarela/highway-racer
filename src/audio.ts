@@ -12,6 +12,17 @@ export interface SoundFrame {
   heli: number; // 0..1
 }
 
+/** iOS 17+ audio session type; older browsers don't have it. */
+function setSessionType(type: "playback" | "ambient"): void {
+  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  try {
+    session.type = type;
+  } catch {
+    /* older Safari: the silent switch mutes web audio */
+  }
+}
+
 const MUSIC_URL = `${import.meta.env.BASE_URL}audio/neon-city-run.mp3${typeof __BUILD__ === "string" ? `?v=${__BUILD__}` : ""}`;
 const MUSIC = { menu: 0.45, drive: 0.32 }; // music volume (master is 0.8)
 
@@ -49,16 +60,36 @@ export class Sound {
 
   constructor(muted: boolean) {
     this.muted = muted;
-    document.addEventListener("visibilitychange", () => {
-      if (!this.ctx) return;
-      if (document.hidden) {
-        void this.ctx.suspend();
-        this.music?.pause();
-      } else {
-        void this.ctx.resume();
-        this.playMusic();
+    // Leaving the page must silence everything. iOS keeps a "playback" audio
+    // session (and a playing <audio> element) alive in the background, so stop
+    // on every way out and drop to "ambient", which iOS never plays in the background.
+    const away = () => {
+      this.music?.pause();
+      setSessionType("ambient");
+      void this.ctx?.suspend();
+      this.note("page hidden: paused");
+    };
+    const back = () => {
+      if (document.hidden || !this.ctx) return;
+      setSessionType("playback");
+      void this.ctx.resume();
+      this.playMusic();
+    };
+    document.addEventListener("visibilitychange", () => (document.hidden ? away() : back()));
+    window.addEventListener("pagehide", away);
+    document.addEventListener("freeze", away);
+    window.addEventListener("pageshow", back);
+    // no lock-screen / control-centre play button for the game's music
+    const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession;
+    if (ms) {
+      for (const action of ["play", "pause", "seekbackward", "seekforward", "previoustrack", "nexttrack"] as MediaSessionAction[]) {
+        try {
+          ms.setActionHandler(action, () => {});
+        } catch {
+          /* action not supported */
+        }
       }
-    });
+    }
   }
 
   /** test-only: stop the context the way an iOS interruption does */
@@ -130,14 +161,7 @@ export class Sound {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     // iOS 17+: play through the ring/silent switch like a game or video, not like a notification
-    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-    if (session) {
-      try {
-        session.type = "playback";
-      } catch {
-        /* older Safari: the silent switch mutes web audio */
-      }
-    }
+    setSessionType("playback");
     const ctx = (this.ctx = new Ctx());
     ctx.onstatechange = () => this.note(`state ${ctx.state}`);
     this.note(`opened (${ctx.state})`);
@@ -237,6 +261,7 @@ export class Sound {
   private playMusic(): void {
     const el = this.music;
     if (!el || document.hidden) return;
+    el.muted = false;
     void el.play().catch((e) => this.note(`music: ${e}`));
   }
 
