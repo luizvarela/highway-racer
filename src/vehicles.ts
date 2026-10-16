@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 
 // Vehicles come from the Kenney Car Kit (CC0, public/models/kenney/LICENSE.txt).
 // Each GLB has a "body" mesh and four "wheel-*" nodes and faces +Z; we wrap it
@@ -8,13 +9,58 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 export type VehicleKind =
   | "sedan" | "sedan-sports" | "hatchback-sports" | "suv" | "suv-luxury" | "taxi"
   | "van" | "delivery" | "truck" | "truck-flat" | "garbage-truck" | "ambulance"
-  | "firetruck" | "police" | "race-future";
+  | "firetruck" | "police" | "race-future"
+  | "hero-comet";
 
 const LENGTH_M: Record<VehicleKind, number> = {
   sedan: 4.6, "sedan-sports": 4.5, "hatchback-sports": 4.1, suv: 4.8, "suv-luxury": 4.9, taxi: 4.6,
   van: 5.2, delivery: 6.2, truck: 6.8, "truck-flat": 6.8, "garbage-truck": 8.2, ambulance: 6.0,
   firetruck: 9.0, police: 4.8, "race-future": 4.4,
+  "hero-comet": 4.6,
 };
+
+// Hero models: AI-generated (Tripo) and shrunk by scripts/import-model.sh.
+// They live next to the kit folder, are one mesh with baked-in wheels, and
+// face +Z like the kit models.
+const HERO_FILES: Partial<Record<VehicleKind, string>> = {
+  "hero-comet": "../hero/comet.glb",
+};
+const isHero = (kind: VehicleKind) => kind in HERO_FILES;
+
+/** Reflections for the glossy hero paint: a dark room with neon strips. */
+let heroEnv: THREE.Texture | null = null;
+export function setVehicleEnvironment(renderer: THREE.WebGLRenderer): void {
+  const room = new THREE.Scene();
+  room.add(new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: 0x1a1030, side: THREE.BackSide })));
+  const strip = (color: number, w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color }));
+    m.position.set(x, y, z);
+    room.add(m);
+  };
+  strip(0xfff1e0, 4, 0.3, 30, 0, 9, 0); // street lamps overhead
+  strip(0xff2bd6, 0.3, 1.2, 36, -19, 2, 0); // neon on either side
+  strip(0x00e5ff, 0.3, 1.2, 36, 19, 2, 0);
+  strip(0x3a2a70, 40, 0.2, 40, 0, -9.8, 0); // faint road bounce
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  heroEnv = pmrem.fromScene(room, 0.04).texture;
+  pmrem.dispose();
+  for (const [kind, t] of templates) if (isHero(kind)) applyEnv(t);
+}
+
+function applyEnv(root: THREE.Object3D): void {
+  if (!heroEnv) return;
+  root.traverse((o) => {
+    const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (mat?.isMeshStandardMaterial) {
+      // Tripo marks nearly all paint as pure mirror metal, which turns black at
+      // night; cap it so the base colour shows and keep a glossy reflection
+      mat.metalness = 0.45;
+      mat.envMap = heroEnv;
+      mat.envMapIntensity = 1.4;
+      mat.needsUpdate = true;
+    }
+  });
+}
 
 export interface VehicleSize {
   width: number;
@@ -32,13 +78,14 @@ export interface VehicleModel {
 const templates = new Map<VehicleKind, THREE.Group>();
 
 export async function loadVehicles(kinds: VehicleKind[], baseUrl: string): Promise<void> {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   await Promise.all(
     [...new Set(kinds)].map(async (kind) => {
-      const gltf = await loader.loadAsync(`${baseUrl}${kind}.glb`);
+      const gltf = await loader.loadAsync(`${baseUrl}${HERO_FILES[kind] ?? `${kind}.glb`}`);
       gltf.scene.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) o.castShadow = true;
       });
+      if (isHero(kind)) applyEnv(gltf.scene);
       templates.set(kind, gltf.scene);
     }),
   );

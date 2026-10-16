@@ -25,7 +25,7 @@ export interface CarDef {
 export const CARS: CarDef[] = [
   {
     id: "comet", name: "Comet", blurb: "A tidy street sedan. Every getaway starts somewhere.",
-    model: "sedan-sports", price: 0, glow: 0x00e5ff,
+    model: "hero-comet", price: 0, glow: 0x00e5ff,
     topSpeedKmh: 205, accel: 6.5, steerSpeed: 10, toughness: 1, upgradeCost: 250,
   },
   {

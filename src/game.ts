@@ -21,7 +21,7 @@ import type { AdResult, Portal } from "./portal";
 import { loadSave, writeSave, type SaveData } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
-import { loadProps, loadVehicles } from "./vehicles";
+import { loadProps, loadVehicles, setVehicleEnvironment } from "./vehicles";
 
 type State = "loading" | "ready" | "garage" | "running" | "crashed";
 
@@ -107,6 +107,7 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     container.appendChild(this.renderer.domElement);
+    setVehicleEnvironment(this.renderer);
 
     this.scene.background = new THREE.Color(NIGHT);
     this.scene.fog = new THREE.Fog(NIGHT, FOG_NEAR, FOG_FAR);
