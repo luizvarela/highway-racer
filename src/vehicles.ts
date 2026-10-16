@@ -160,16 +160,18 @@ export function buildVehicle(kind: VehicleKind): VehicleModel {
   // glowing head/tail lights so cars read at night (the atlas has no emissive).
   // Kept just outside the bounding box so they never share a plane with a
   // bumper, and tall enough to stay above one pixel at typical traffic range.
-  const lightY = size.height * 0.4;
+  // Hero models have real light housings: sit the glow inside them instead.
+  const hero = isHero(kind);
+  const lightY = size.height * (hero ? 0.56 : 0.4);
   const lightDepth = 0.06;
-  const gap = 0.03;
+  const gap = hero ? -0.12 : 0.03;
   for (const side of [-1, 1]) {
     const tail = new THREE.Mesh(lightGeo, tailMat);
     tail.scale.set(size.width * 0.2, 0.2, lightDepth);
     tail.position.set(side * size.width * 0.32, lightY, size.length / 2 + gap + lightDepth / 2);
     const head = new THREE.Mesh(lightGeo, headMat);
     head.scale.set(size.width * 0.18, 0.16, lightDepth);
-    head.position.set(side * size.width * 0.32, lightY * 0.9, -size.length / 2 - gap - lightDepth / 2);
+    head.position.set(side * size.width * 0.32, hero ? size.height * 0.42 : lightY * 0.9, -size.length / 2 - gap - lightDepth / 2);
     group.add(tail, head);
   }
 
