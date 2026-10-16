@@ -31,10 +31,11 @@ const HERO_FILES: Partial<Record<VehicleKind, string>> = {
   police: "../hero/police.glb",
   "hero-bus": "../hero/bus.glb", // traffic models are imported at a third of the detail
   "hero-truck": "../hero/truck.glb",
+  taxi: "../hero/taxi.glb",
 };
 const isHero = (kind: VehicleKind) => kind in HERO_FILES;
 // light paint goes past the bloom threshold under the neon reflections: dim it
-const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72, "hero-truck": 0.75 };
+const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72, "hero-truck": 0.75, taxi: 0.85 };
 
 /** Reflections for the glossy hero paint: a dark room with neon strips. */
 let heroEnv: THREE.Texture | null = null;
