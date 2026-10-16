@@ -15,3 +15,4 @@ $G webp "$tmp/c.glb" "$tmp/d.glb" --quality 85
 $G meshopt "$tmp/d.glb" "$out"
 rm -rf "$tmp"
 ls -la "$out"
+node scripts/check-model.mjs "$out"
