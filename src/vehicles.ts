@@ -28,10 +28,12 @@ const HERO_FILES: Partial<Record<VehicleKind, string>> = {
   "hero-viper": "../hero/viper.glb",
   "hero-bruiser": "../hero/bruiser.glb",
   "hero-phantom": "../hero/phantom.glb",
-  police: "../hero/police.glb",
-  "hero-bus": "../hero/bus.glb", // traffic models are imported at a third of the detail
+  police: "../hero/police.glb", // yaw 90 at import
+  "hero-bus": "../hero/bus.glb", // yaw 90 at import; traffic models are imported at a third of the detail
   "hero-truck": "../hero/truck.glb",
   taxi: "../hero/taxi.glb",
+  suv: "../hero/suv.glb", // yaw 90 at import
+  "hatchback-sports": "../hero/hatchback.glb", // yaw 90 at import
 };
 const isHero = (kind: VehicleKind) => kind in HERO_FILES;
 // light paint goes past the bloom threshold under the neon reflections: dim it
