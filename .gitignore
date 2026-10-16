@@ -3,3 +3,5 @@ dist
 dist-crazygames
 *.zip
 assets-src/**/*.glb
+_viewer.html
+public/_test/

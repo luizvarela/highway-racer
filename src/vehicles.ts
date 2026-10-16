@@ -52,9 +52,7 @@ function applyEnv(root: THREE.Object3D): void {
   root.traverse((o) => {
     const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (mat?.isMeshStandardMaterial) {
-      // Tripo marks nearly all paint as pure mirror metal, which turns black at
-      // night; cap it so the base colour shows and keep a glossy reflection
-      mat.metalness = 0.45;
+      // gloss is set at import (scripts/strip-maps.mjs): an even paint finish
       mat.envMap = heroEnv;
       mat.envMapIntensity = 1.4;
       mat.needsUpdate = true;
