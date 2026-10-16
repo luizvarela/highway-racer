@@ -129,6 +129,9 @@ export const HAZARDS = {
     minLevel: 5,
     evadeRate: 0.5, // escape progress fills this much slower under the searchlight
   },
+  tunnel: {
+    evadeRate: 1.7, // ...and this much faster in a tunnel, where the chopper loses you
+  },
 };
 
 // Midgame ads (portal builds only): at the death transition, never before

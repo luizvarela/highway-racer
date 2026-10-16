@@ -6,7 +6,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { CARS, carById, carStats, cashForScore, nextGoal } from "./cars";
 import { applyRun, claimDaily, dailyOffer, drawMission, fillMissions, liveViews, setDateOverride, today, viewMission } from "./missions";
 import { Sound } from "./audio";
-import { ADS, ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
+import { ADS, ease, ESCAPE, FOG_FAR, FOG_NEAR, HAZARDS, HEAT, HIGH_SPEED_KMH, KMH, PLAYER, SCORE } from "./config";
 import { DEBRIS_KINDS, Debris } from "./debris";
 import { Skyline, SpeedLines } from "./environment";
 import { Garage } from "./garage";
@@ -16,7 +16,7 @@ import { Hud, type RunStats } from "./hud";
 import { Input } from "./input";
 import { Player } from "./player";
 import { Police } from "./police";
-import { Road } from "./road";
+import { DISTRICTS, Road } from "./road";
 import type { AdResult, Portal } from "./portal";
 import { loadSave, SAVE_KEY, writeSave, type SaveData, type SaveStore } from "./save";
 import { Scoring } from "./scoring";
@@ -28,6 +28,8 @@ type State = "loading" | "ready" | "garage" | "running" | "crashed";
 const NIGHT = 0x1a0b2e;
 const MAX_STEP_HZ = 120; // physics steps per second at least, whatever the display rate
 const CRASH_OVERLAY_DELAY = 1.1; // seconds of crash animation before the results panel
+const SKY_LIGHT = new THREE.Color(0x6a5cff);
+const SODIUM_LIGHT = new THREE.Color(0xffa860);
 const DEV = new URLSearchParams(location.search).has("dev");
 const DEV_CASH = 9_999_999;
 const devStore = (base: SaveStore): SaveStore => ({
@@ -52,6 +54,10 @@ export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(62, 1, 0.5, 1000);
   private readonly moon = new THREE.DirectionalLight(0x9fb4ff, 0.9);
+  private readonly hemi = new THREE.HemisphereLight(SKY_LIGHT, 0x1a0820, 0.9);
+  private tunnelLight = 0; // 0 = open sky, 1 = deep in a tunnel (eased)
+  private inTunnel = false;
+  private testGhost = false; // test hook: no crashes or busts
   private readonly road = new Road();
   private readonly skyline = new Skyline();
   private readonly speedLines = new SpeedLines();
@@ -122,7 +128,7 @@ export class Game {
 
     this.scene.background = new THREE.Color(NIGHT);
     this.scene.fog = new THREE.Fog(NIGHT, FOG_NEAR, FOG_FAR);
-    this.scene.add(new THREE.HemisphereLight(0x6a5cff, 0x1a0820, 0.9));
+    this.scene.add(this.hemi);
 
     // dim moonlight keeps a soft shadow under the cars; it follows the player
     this.moon.position.set(-20, 40, 25);
@@ -145,7 +151,7 @@ export class Game {
     this.hazards = new Hazards(this.police.barMats);
     this.debris = new Debris();
     this.scene.add(
-      this.skyline.mesh, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object,
+      this.skyline.group, this.road.group, this.traffic.group, this.player.object, this.police.group, this.speedLines.object,
       this.hazards.group, this.heli.group, this.debris.group,
     );
 
@@ -238,6 +244,17 @@ export class Game {
       setPlaySeconds(v: number) { game.playSeconds = v; },
       get tiresBlown() { return game.player.tiresBlown; },
       get heliWatching() { return game.heli.watching; },
+      get district() { return game.road.kindAt(0); },
+      get inTunnel() { return game.inTunnel; },
+      get districtName() { return game.road.districtAt(0).name; },
+      /** test-only: drive through traffic and never get busted */
+      ghost(on: boolean) { game.testGhost = on; },
+      /** test-only: empty road (no traffic, cops or hazards), for scenery shots */
+      calm() { game.traffic.reset(); game.police.reset(); game.hazards.reset(); },
+      /** test-only: scroll the road this many metres ahead (traffic etc. stay put) */
+      scrollRoad(metres: number) {
+        for (let m = 0; m < metres; m += 20) game.road.update(20);
+      },
       /** test-only: raise the wanted level */
       setHeat(h: number) { game.heat = h; },
       /** test-only: put a hazard on the road ahead (lane: 0..3, or the player's for spikes) */
@@ -300,6 +317,11 @@ export class Game {
     this.hazards.reset();
     this.heli.reset();
     this.debris.reset();
+    this.road.reset();
+    this.skyline.setDistrict(0);
+    this.inTunnel = false;
+    this.tunnelLight = 0;
+    this.updateTunnel(1, false); // back to open-sky light
     this.hazardWarned = false;
     this.missionCheck = 0;
     this.missionDoneShown.clear();
@@ -444,6 +466,7 @@ export class Game {
       this.road.update(dz);
       const p = this.player;
       const running = this.state === "running";
+      this.updateTunnel(dt, running);
       this.traffic.walls = this.hazards.walls();
       this.traffic.update(dt, p.speed, this.stats.distanceKm);
       const chased = this.police.activeCount > 0;
@@ -465,7 +488,7 @@ export class Game {
           this.stats.roadblocks++;
         }
       }
-      const heliWanted = running && chased && this.level >= HAZARDS.heli.minLevel;
+      const heliWanted = running && chased && this.level >= HAZARDS.heli.minLevel && !this.inTunnel;
       if (this.heli.update(dt, heliWanted, p.x) === "arrived") this.hud.popup("AIR SUPPORT ON YOU", "hazard");
       if (p.tiresBlown && !p.crashed && Math.random() < 0.5) this.debris.spark(p.x, 0.15, p.halfLength - 0.6, 2, p.speed);
       this.debris.update(dt, p.speed);
@@ -545,6 +568,27 @@ export class Game {
     }
   }
 
+  /** Tunnels: warm lamp light washing over the car, and a place to shake the chopper. */
+  private updateTunnel(dt: number, running: boolean): void {
+    const inside = this.road.kindAt(0) === "tunnel";
+    if (inside !== this.inTunnel) {
+      this.inTunnel = inside;
+      if (inside && running && this.pursuit) {
+        this.hud.popup(this.heli.watching ? "TUNNEL · CHOPPER LOST YOU" : "TUNNEL · ESCAPE FASTER", "escape");
+      }
+      if (!inside && running) this.hud.popup(this.road.districtAt(0).name, "multiplier");
+      // swap the backdrop while the tunnel hides the sky
+      if (inside) this.skyline.setDistrict((this.road.districtIndexAt(0) + 1) % DISTRICTS.length);
+    }
+    // the camera sits a few metres behind the car: light follows what it sees
+    const target = this.road.kindAt(4) === "tunnel" ? 1 : 0;
+    this.tunnelLight += (target - this.tunnelLight) * ease(3, dt);
+    const t = this.tunnelLight;
+    this.hemi.color.lerpColors(SKY_LIGHT, SODIUM_LIGHT, t);
+    this.hemi.intensity = 0.9 + t * (0.15 + 0.55 * this.road.lampPulse);
+    this.moon.intensity = 0.9 * (1 - t * 0.85);
+  }
+
   /** Stay clear of the cops long enough and the wanted level drops a star. */
   private updateEscape(dt: number): void {
     const near = this.police.nearest;
@@ -556,7 +600,7 @@ export class Game {
       this.evade = Math.max(0, this.evade - dt / ESCAPE.drainSeconds);
       return;
     }
-    const rate = this.heli.watching ? HAZARDS.heli.evadeRate : 1;
+    const rate = this.inTunnel ? HAZARDS.tunnel.evadeRate : this.heli.watching ? HAZARDS.heli.evadeRate : 1;
     this.evade += (rate * dt) / (ESCAPE.baseSeconds + ESCAPE.perLevelSeconds * this.level);
     if (this.evade < 1) return;
 
@@ -737,14 +781,14 @@ export class Game {
       this.sound.spikes();
       this.hud.popup("TYRES BLOWN", "hazard");
     }
-    const side = this.traffic.collide(box) || hit.roadblock;
+    const side = this.testGhost ? 0 : this.traffic.collide(box) || hit.roadblock;
     if (side !== 0) {
       this.debris.burst(p.x, -p.halfLength, p.speed, 7, 1.2);
       this.sound.crash();
       p.crash(side);
       this.shake = 0.6;
       this.end("crashed");
-    } else if (this.police.bust >= 1) {
+    } else if (this.police.bust >= 1 && !this.testGhost) {
       p.pullOver();
       this.end("busted");
     }

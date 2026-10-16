@@ -2,9 +2,30 @@ import * as THREE from "three";
 
 // Night backdrop and speed effects. None of this takes part in gameplay.
 
-/** Gradient sky, striped synthwave sun and a city skyline on one far billboard. */
+/** A painted panorama on a far plane, mirrored sideways so it never ends. */
+function panorama(url: string, width: number, height: number, transparent: boolean): THREE.Mesh {
+  const tex = new THREE.TextureLoader().load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.MirroredRepeatWrapping;
+  tex.repeat.x = width / height / (4128 / 1024); // the source images are 4128 x 1024
+  tex.offset.x = (1 - tex.repeat.x) / 2;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ map: tex, fog: false, depthWrite: false, transparent }),
+  );
+  return mesh;
+}
+
+/**
+ * The backdrop. Neon Downtown uses two painted layers (far city with its own
+ * sky, near towers cut out of black) that slide at different rates; the other
+ * districts keep the striped synthwave sun drawn on a canvas.
+ */
 export class Skyline {
-  readonly mesh: THREE.Mesh;
+  readonly group = new THREE.Group();
+  private readonly sun: THREE.Mesh;
+  private readonly far: THREE.Mesh;
+  private readonly near: THREE.Mesh;
 
   constructor() {
     const w = 2048;
@@ -70,16 +91,34 @@ export class Skyline {
 
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    this.mesh = new THREE.Mesh(
+    this.sun = new THREE.Mesh(
       new THREE.PlaneGeometry(2600, 812),
       new THREE.MeshBasicMaterial({ map: tex, fog: false, depthWrite: false }),
     );
-    this.mesh.position.set(0, 330, -720);
-    this.mesh.renderOrder = -1;
+    this.sun.position.set(0, 330, -720);
+
+    const base = import.meta.env.BASE_URL;
+    this.far = panorama(`${base}env/skyline-far.webp`, 2600, 560, false);
+    this.far.position.set(0, 560 / 2 - 40, -720);
+    this.near = panorama(`${base}env/skyline-near.webp`, 2300, 300, true);
+    this.near.position.set(0, 300 / 2 - 25, -600);
+    for (const [i, m] of [this.sun, this.far, this.near].entries()) {
+      m.renderOrder = -3 + i; // drawn first, back to front
+      this.group.add(m);
+    }
+    this.setDistrict(0);
+  }
+
+  /** 0 = Neon Downtown (painted layers); others get the sun. */
+  setDistrict(index: number): void {
+    const painted = index === 0;
+    this.far.visible = this.near.visible = painted;
+    this.sun.visible = !painted;
   }
 
   follow(cameraX: number): void {
-    this.mesh.position.x = cameraX;
+    this.sun.position.x = this.far.position.x = cameraX;
+    this.near.position.x = cameraX * 0.85; // a touch of parallax against the far layer
   }
 }
 

@@ -5,3 +5,4 @@ dist-crazygames
 assets-src/**/*.glb
 _viewer.html
 public/_test/
+assets-src/env/
