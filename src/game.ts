@@ -21,7 +21,7 @@ import type { AdResult, Portal } from "./portal";
 import { loadSave, SAVE_KEY, writeSave, type SaveData, type SaveStore } from "./save";
 import { Scoring } from "./scoring";
 import { TRAFFIC_KINDS, Traffic } from "./traffic";
-import { loadProps, loadVehicles, setVehicleEnvironment } from "./vehicles";
+import { loadProps, loadVehicles, roadEnvironment, setVehicleEnvironment } from "./vehicles";
 
 type State = "loading" | "ready" | "garage" | "running" | "crashed";
 
@@ -125,6 +125,7 @@ export class Game {
     this.renderer.toneMappingExposure = 1.1;
     container.appendChild(this.renderer.domElement);
     setVehicleEnvironment(this.renderer);
+    this.road.setEnvironment(roadEnvironment());
 
     this.scene.background = new THREE.Color(NIGHT);
     this.scene.fog = new THREE.Fog(NIGHT, FOG_NEAR, FOG_FAR);
@@ -246,6 +247,7 @@ export class Game {
       get heliWatching() { return game.heli.watching; },
       get district() { return game.road.kindAt(0); },
       get inTunnel() { return game.inTunnel; },
+      get gantries() { return game.road.gantryZ; },
       get districtName() { return game.road.districtAt(0).name; },
       /** test-only: drive through traffic and never get busted */
       ghost(on: boolean) { game.testGhost = on; },

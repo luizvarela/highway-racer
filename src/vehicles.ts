@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { streakGeometry, streakMaterial } from "./streaks";
 
 // Vehicles come from the Kenney Car Kit (CC0, public/models/kenney/LICENSE.txt).
 // Each GLB has a "body" mesh and four "wheel-*" nodes and faces +Z; we wrap it
@@ -41,6 +42,9 @@ const HERO_SHADE: Partial<Record<VehicleKind, number>> = { "hero-viper": 0.72, "
 
 /** Reflections for the glossy hero paint: a dark room with neon strips. */
 let heroEnv: THREE.Texture | null = null;
+let roadEnv: THREE.Texture | null = null;
+/** What the wet road reflects: purple night sky and a band of city light at the horizon. */
+export const roadEnvironment = (): THREE.Texture | null => roadEnv;
 export function setVehicleEnvironment(renderer: THREE.WebGLRenderer): void {
   const room = new THREE.Scene();
   room.add(new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: 0x1a1030, side: THREE.BackSide })));
@@ -55,6 +59,21 @@ export function setVehicleEnvironment(renderer: THREE.WebGLRenderer): void {
   strip(0x3a2a70, 40, 0.2, 40, 0, -9.8, 0); // faint road bounce
   const pmrem = new THREE.PMREMGenerator(renderer);
   heroEnv = pmrem.fromScene(room, 0.04).texture;
+
+  const sky = new THREE.Scene();
+  sky.add(new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: 0x2a1450, side: THREE.BackSide })));
+  const band = (color: number, y: number, h: number) => {
+    for (const [x, z, w, d] of [[0, -19.8, 40, 0.2], [0, 19.8, 40, 0.2], [-19.8, 0, 0.2, 40], [19.8, 0, 0.2, 40]]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color }));
+      m.position.set(x, y, z);
+      sky.add(m);
+    }
+  };
+  band(0x6a3aa0, 1.5, 5); // glow above the skyline
+  band(0xffb070, 0.2, 1.2); // warm windows
+  band(0xff2bd6, -0.6, 0.35); // neon at street level
+  band(0x00e5ff, -1.0, 0.25);
+  roadEnv = pmrem.fromScene(sky, 0.02).texture;
   pmrem.dispose();
   for (const [kind, t] of templates) if (isHero(kind)) applyEnv(t, kind);
 }
@@ -145,6 +164,8 @@ export function buildProp(kind: PropKind): THREE.Group {
 const tailMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2030, emissiveIntensity: 4 });
 const headMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff4d6, emissiveIntensity: 3 });
 const lightGeo = new THREE.BoxGeometry(1, 1, 1);
+const tailGlowMat = streakMaterial(0xff2030, 0.5); // tail lights on the wet road
+const tailGlowGeo = streakGeometry(0.8, 3.4);
 
 export function buildVehicle(kind: VehicleKind): VehicleModel {
   const template = templates.get(kind);
@@ -184,6 +205,10 @@ export function buildVehicle(kind: VehicleKind): VehicleModel {
     head.scale.set(size.width * 0.18, 0.16, lightDepth);
     head.position.set(side * size.width * 0.32, hero ? size.height * 0.42 : lightY * 0.9, -size.length / 2 - gap - lightDepth / 2);
     group.add(tail, head);
+    const glow = new THREE.Mesh(tailGlowGeo, tailGlowMat);
+    glow.position.set(side * size.width * 0.32, 0.03, size.length / 2 - 0.2);
+    glow.renderOrder = 1;
+    group.add(glow);
   }
 
   // wheel nodes sit at their own centre, so their height above the ground is the radius

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { streakGeometry, streakMaterial } from "./streaks";
 import { CHUNK_COUNT, CHUNK_LENGTH, LANE_COUNT, LANE_WIDTH, RAIL_X, RECYCLE_Z, ROAD_WIDTH, SHOULDER } from "./config";
 
 // Endless neon highway made of CHUNK_COUNT chunks. Each frame they scroll
@@ -18,7 +19,7 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 }
 
 /** Asphalt colour map plus a matching emissive map that holds only the lines. */
-function asphaltTextures(): { map: THREE.CanvasTexture; emissive: THREE.CanvasTexture } {
+function asphaltTextures(edge = "#ff2bd6"): { map: THREE.CanvasTexture; emissive: THREE.CanvasTexture } {
   const pxPerM = 24;
   const w = Math.round(ASPHALT_WIDTH * pxPerM);
   const h = 1024; // stretched over CHUNK_LENGTH metres
@@ -45,8 +46,8 @@ function asphaltTextures(): { map: THREE.CanvasTexture; emissive: THREE.CanvasTe
     }
   };
   // solid pink edge lines
-  draw("#ff2bd6", SHOULDER * pxPerM - line, 0, line, h);
-  draw("#ff2bd6", (SHOULDER + ROAD_WIDTH) * pxPerM, 0, line, h);
+  draw(edge, SHOULDER * pxPerM - line, 0, line, h);
+  draw(edge, (SHOULDER + ROAD_WIDTH) * pxPerM, 0, line, h);
   // dashed cyan lane lines: 3 m dash, 9 m gap (12 m period divides CHUNK_LENGTH)
   for (let lane = 1; lane < LANE_COUNT; lane++) {
     const x = (SHOULDER + LANE_WIDTH * lane) * pxPerM - line / 2;
@@ -81,11 +82,11 @@ function gridTexture(): THREE.CanvasTexture {
 
 /** Loaded once and shared: AI-painted facade photo plus a map of just its lit windows. */
 const textureCache = new Map<string, THREE.Texture>();
-function envTexture(name: string): THREE.Texture {
+function envTexture(name: string, color = true): THREE.Texture {
   let t = textureCache.get(name);
   if (!t) {
     t = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}env/${name}.webp`);
-    t.colorSpace = THREE.SRGBColorSpace;
+    t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 8;
     textureCache.set(name, t);
@@ -152,6 +153,39 @@ function concreteTexture(): THREE.CanvasTexture {
 
 export type ChunkKind = "city" | "tunnel";
 
+const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
+
+/** Overhead gantry signs: three boards (exit, the next district, a lane arrow) on one texture. */
+function signTexture(here: District, next: District): THREE.CanvasTexture {
+  const w = 1024, h = 176;
+  const [c, ctx] = canvas(w, h);
+  ctx.clearRect(0, 0, w, h);
+  const boards: [number, number, string, string][] = [
+    [0, 300, "EXIT 42", "HARBOR · AIRPORT"],
+    [312, 400, `${next.name}`, "VIA TUNNEL  ↑"],
+    [724, 300, "↑   ↑", "ALL LANES"],
+  ];
+  for (const [x, bw, top, bottom] of boards) {
+    ctx.fillStyle = "#0b2a5c";
+    ctx.fillRect(x + 4, 4, bw - 8, h - 8);
+    ctx.strokeStyle = hex(here.rail);
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x + 7, 7, bw - 14, h - 14);
+    ctx.fillStyle = "#f4f7ff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 54px system-ui, Arial, sans-serif";
+    ctx.fillText(top, x + bw / 2, h * 0.38, bw - 30);
+    ctx.font = "600 30px system-ui, Arial, sans-serif";
+    ctx.fillStyle = "#cfe0ff";
+    ctx.fillText(bottom, x + bw / 2, h * 0.74, bw - 30);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
 /** City districts: same layout, own colours. A tunnel separates each one. */
 export interface District {
   name: string;
@@ -184,7 +218,7 @@ class DistrictSequence {
     this.index = 0;
   }
 
-  next(): { kind: ChunkKind; entrance: boolean; district: number } {
+  next(): { kind: ChunkKind; entrance: boolean; district: number; gantry: boolean } {
     if (this.left <= 0) {
       this.kind = this.kind === "city" ? "tunnel" : "city";
       if (this.kind === "city") this.district = (this.district + 1) % DISTRICTS.length;
@@ -194,7 +228,9 @@ class DistrictSequence {
     this.left--;
     const entrance = this.kind === "tunnel" && this.index === 0;
     this.index++;
-    return { kind: this.kind, entrance, district: this.district };
+    // an overhead sign gantry every 7 city chunks (~420 m), never on the first
+    const gantry = this.kind === "city" && this.index % 7 === 4;
+    return { kind: this.kind, entrance, district: this.district, gantry };
   }
 }
 
@@ -211,6 +247,11 @@ interface Chunk {
   buildings: { body: THREE.Mesh; roof: THREE.Mesh; shop: THREE.Mesh }[];
   billboard: THREE.Group;
   poster: THREE.Mesh;
+  road: THREE.Mesh;
+  lampGlow: THREE.Mesh;
+  edgeGlows: THREE.Mesh[];
+  gantry: THREE.Group;
+  signs: THREE.Mesh;
 }
 
 /** Roadside posters (public/env/billboard-*.webp), one in a few city chunks. */
@@ -225,24 +266,37 @@ export class Road {
   readonly group = new THREE.Group();
   private readonly chunks: Chunk[] = [];
   private readonly sequence = new DistrictSequence();
+  private readonly asphaltMats: THREE.MeshStandardMaterial[]; // one per district: edge lines match its neon
   private readonly posterMats: THREE.Material[];
   private readonly shopMats: THREE.Material[];
   private readonly mats: {
     tube: THREE.Material; lamp: THREE.Material; ground: THREE.Material; buildings: THREE.Material[]; roofs: THREE.Material[];
+    lampGlow: THREE.Material; edgeGlow: THREE.Material; signs: THREE.Material;
   }[];
   /** metres scrolled since the run started (tunnel lamp rhythm) */
   travelled = 0;
 
   constructor() {
-    const asphalt = asphaltTextures();
-    const asphaltMat = new THREE.MeshStandardMaterial({
-      map: asphalt.map,
-      emissiveMap: asphalt.emissive,
+    // wet asphalt: scanned surface (ambientCG, CC0) tiled every 7 m, a puddle
+    // roughness map, and the neon reflection map; lane lines glow on top
+    const tiled = (name: string, color: boolean) => {
+      const t = envTexture(name, color);
+      t.repeat.set(ASPHALT_WIDTH / 7, CHUNK_LENGTH / 7);
+      return t;
+    };
+    this.asphaltMats = DISTRICTS.map((d) => new THREE.MeshStandardMaterial({
+      map: tiled("asphalt-color", true),
+      color: 0x7c7c88,
+      normalMap: tiled("asphalt-normal", false),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughnessMap: tiled("asphalt-rough", false),
+      roughness: 1.25, // scales the map: dry asphalt stays fairly matte, puddles (~0.08) stay glossy
+      metalness: 0,
+      emissiveMap: asphaltTextures(hex(d.rail)).emissive,
       emissive: 0xffffff,
       emissiveIntensity: 1.6,
-      roughness: 0.55,
-      metalness: 0.2,
-    });
+      envMapIntensity: 0.85,
+    }));
     const gridTex = gridTexture();
     this.mats = DISTRICTS.map((d) => ({
       tube: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: d.rail, emissiveIntensity: 3 }),
@@ -250,9 +304,13 @@ export class Road {
       ground: new THREE.MeshStandardMaterial({ color: 0x07040f, emissive: d.grid, emissiveMap: gridTex, emissiveIntensity: 0.9, roughness: 1 }),
       buildings: d.facades.map((f) => facadeMaterial(f, d.glow)),
       roofs: d.roofs.map((c) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c, emissiveIntensity: 3 })),
+      lampGlow: streakMaterial(d.lamp, 0.55),
+      edgeGlow: streakMaterial(d.rail, 0.22),
+      signs: new THREE.MeshBasicMaterial({ map: signTexture(d, DISTRICTS[(DISTRICTS.indexOf(d) + 1) % DISTRICTS.length]), color: 0xd0d0d0 }),
     }));
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x2a2d38, metalness: 0.7, roughness: 0.35 });
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x23252e, roughness: 0.6 });
+    const barrierTex = concreteTexture();
+    barrierTex.repeat.set(0.25, 0.25); // extrude UVs are in metres: one tile per 4 m
+    const barrierMat = new THREE.MeshStandardMaterial({ map: barrierTex, color: 0x9a9aa6, roughness: 0.8 });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x1d1f27, roughness: 0.5, metalness: 0.5 });
     const base = this.mats[0];
     const loader = new THREE.TextureLoader();
@@ -276,6 +334,8 @@ export class Road {
     const wallMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.85 });
     const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x1b1b22, roughness: 0.9 });
     const sodiumMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffa040, emissiveIntensity: 4 });
+    const sodiumGlowMat = streakMaterial(0xff9a40, 0.4);
+    const gantryMat = new THREE.MeshStandardMaterial({ color: 0x3a3d48, metalness: 0.6, roughness: 0.45 });
     const stripMats = [NEON_CYAN, NEON_PINK].map(
       (c) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c, emissiveIntensity: 3 }),
     );
@@ -289,9 +349,17 @@ export class Road {
 
     const asphaltGeo = new THREE.PlaneGeometry(ASPHALT_WIDTH, CHUNK_LENGTH).rotateX(-Math.PI / 2);
     const groundGeo = new THREE.PlaneGeometry(GROUND_WIDTH, CHUNK_LENGTH).rotateX(-Math.PI / 2);
-    const railGeo = new THREE.BoxGeometry(0.12, 0.32, CHUNK_LENGTH);
-    const tubeGeo = new THREE.BoxGeometry(0.07, 0.07, CHUNK_LENGTH);
-    const postGeo = new THREE.BoxGeometry(0.12, 0.75, 0.12);
+    // concrete jersey barrier, extruded along the chunk
+    const jersey = new THREE.Shape(
+      [[-0.3, 0], [0.3, 0], [0.3, 0.08], [0.12, 0.33], [0.08, 0.85], [-0.08, 0.85], [-0.12, 0.33], [-0.3, 0.08]].map(
+        ([x, y]) => new THREE.Vector2(x, y),
+      ),
+    );
+    const barrierGeo = new THREE.ExtrudeGeometry(jersey, { depth: CHUNK_LENGTH, bevelEnabled: false }).translate(0, 0, -CHUNK_LENGTH / 2);
+    const tubeGeo = new THREE.BoxGeometry(0.08, 0.08, CHUNK_LENGTH);
+    const lampGlowGeo = streakGeometry(1.8, 16);
+    const edgeGlowGeo = new THREE.PlaneGeometry(1.2, CHUNK_LENGTH).rotateX(-Math.PI / 2);
+    const sodiumGlowGeo = streakGeometry(1.2, 7);
     const poleGeo = new THREE.CylinderGeometry(0.1, 0.14, 9, 8);
     const armGeo = new THREE.BoxGeometry(2.6, 0.12, 0.12);
     const lampGeo = new THREE.BoxGeometry(1.2, 0.1, 0.3);
@@ -303,8 +371,6 @@ export class Road {
     const stripGeo = new THREE.BoxGeometry(0.08, 0.12, CHUNK_LENGTH);
     const sodiumGeo = new THREE.BoxGeometry(0.5, 0.12, 1.6);
 
-    const postSpacing = 4;
-    const postsPerSide = CHUNK_LENGTH / postSpacing;
     const buildingsPerSide = 3;
     const lampsPerChunk = CHUNK_LENGTH / LAMP_SPACING;
 
@@ -316,7 +382,7 @@ export class Road {
       group.add(city, tunnel);
       tunnel.add(portal);
 
-      const road = new THREE.Mesh(asphaltGeo, asphaltMat);
+      const road = new THREE.Mesh(asphaltGeo, this.asphaltMats[0]);
       road.receiveShadow = true;
       group.add(road);
 
@@ -325,23 +391,23 @@ export class Road {
       ground.position.y = -0.03;
       city.add(ground);
 
-      const posts = new THREE.InstancedMesh(postGeo, postMat, postsPerSide * 2);
       const m = new THREE.Matrix4();
       let n = 0;
       const tubes: THREE.Mesh[] = [];
+      const edgeGlows: THREE.Mesh[] = [];
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(railGeo, railMat);
-        rail.position.set(side * RAIL_X, 0.62, 0);
+        const barrier = new THREE.Mesh(barrierGeo, barrierMat);
+        barrier.position.set(side * RAIL_X, 0, 0);
+        barrier.receiveShadow = true;
         const tube = new THREE.Mesh(tubeGeo, base.tube);
         tubes.push(tube);
-        tube.position.set(side * RAIL_X, 0.82, 0);
-        city.add(rail, tube);
-        for (let p = 0; p < postsPerSide; p++) {
-          m.makeTranslation(side * (RAIL_X + 0.08), 0.37, -CHUNK_LENGTH / 2 + p * postSpacing);
-          posts.setMatrixAt(n++, m);
-        }
+        tube.position.set(side * RAIL_X, 0.89, 0);
+        // the neon tube's glow spilling onto the wet road beside the barrier
+        const edge = new THREE.Mesh(edgeGlowGeo, base.edgeGlow);
+        edge.position.set(side * (RAIL_X - 0.75), 0.025, 0);
+        edgeGlows.push(edge);
+        city.add(barrier, tube, edge);
       }
-      city.add(posts);
 
       // one street lamp per chunk, alternating sides
       const side = i % 2 === 0 ? -1 : 1;
@@ -355,6 +421,9 @@ export class Road {
       lamp.add(pole, arm, head);
       lamp.position.set(side * (RAIL_X + 1.6), 0, 0);
       city.add(lamp);
+      const lampGlow = new THREE.Mesh(lampGlowGeo, base.lampGlow);
+      lampGlow.position.set(side * (RAIL_X - 0.7), 0.03, -2);
+      city.add(lampGlow);
 
       // city blocks on both sides with lit windows and neon roof trims
       const buildings: Chunk["buildings"] = [];
@@ -381,6 +450,25 @@ export class Road {
       }
       city.add(billboard);
 
+      // overhead sign gantry (shown on some chunks): clear of the chase camera
+      const gantry = new THREE.Group();
+      const gx = RAIL_X + 0.9;
+      for (const s of [-1, 1]) {
+        const post = new THREE.Mesh(buildingGeo, gantryMat);
+        post.scale.set(0.45, 12.6, 0.45);
+        post.position.set(s * gx, 6.3, 0);
+        gantry.add(post);
+      }
+      const beam = new THREE.Mesh(buildingGeo, gantryMat);
+      beam.scale.set(gx * 2 + 0.45, 0.7, 0.7);
+      beam.position.set(0, 12.25, 0);
+      const signs = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH + 1, (ROAD_WIDTH + 1) * (176 / 1024)), base.signs);
+      signs.position.set(0, 10.9, 0.4);
+      const signLight = new THREE.Mesh(new THREE.BoxGeometry(ROAD_WIDTH, 0.1, 0.25), sodiumMat);
+      signLight.position.set(0, 12.55 - 0.3, 0.75);
+      gantry.add(beam, signs, signLight);
+      group.add(gantry);
+
       // ---- tunnel dressing ----
       for (const s of [-1, 1]) {
         const wall = new THREE.Mesh(wallGeo, wallMat);
@@ -406,6 +494,13 @@ export class Road {
         }
       }
       tunnel.add(sodium);
+      const sodiumGlow = new THREE.InstancedMesh(sodiumGlowGeo, sodiumGlowMat, lampsPerChunk * 2);
+      for (let k = 0; k < lampsPerChunk * 2; k++) {
+        sodium.getMatrixAt(k, m);
+        const p = new THREE.Vector3().setFromMatrixPosition(m);
+        sodiumGlow.setMatrixAt(k, new THREE.Matrix4().makeTranslation(p.x, 0.03, p.z - 1));
+      }
+      tunnel.add(sodiumGlow);
       // the mass the tunnel runs under: a lit megablock
       const block = new THREE.Mesh(buildingGeo, blockMat);
       block.scale.set(170, 26, CHUNK_LENGTH);
@@ -441,7 +536,7 @@ export class Road {
         portal.add(chev);
       }
 
-      const chunk: Chunk = { group, kind: "city", district: 0, tubes, lampHead: head, ground, city, tunnel, portal, buildings, billboard, poster };
+      const chunk: Chunk = { group, kind: "city", district: 0, tubes, lampHead: head, ground, city, tunnel, portal, buildings, billboard, poster, road, lampGlow, edgeGlows, gantry, signs };
       this.chunks.push(chunk);
       this.group.add(group);
     }
@@ -454,13 +549,16 @@ export class Road {
     this.travelled = 0;
     this.chunks.forEach((c, i) => {
       c.group.position.z = RECYCLE_Z - CHUNK_LENGTH / 2 - i * CHUNK_LENGTH;
-      this.dress(c, "city", false, 0);
+      this.dress(c, "city", false, 0, false);
     });
   }
 
-  private dress(c: Chunk, kind: ChunkKind, entrance: boolean, district: number): void {
+  private dress(c: Chunk, kind: ChunkKind, entrance: boolean, district: number, gantry: boolean): void {
     c.kind = kind;
     c.district = district;
+    c.gantry.visible = gantry;
+    c.road.material = this.asphaltMats[district];
+    c.signs.material = this.mats[district].signs;
     c.city.visible = kind === "city";
     c.tunnel.visible = kind === "tunnel";
     c.portal.visible = entrance;
@@ -475,6 +573,8 @@ export class Road {
       c.poster.material = this.posterMats[Math.floor(Math.random() * this.posterMats.length)];
     }
     c.lampHead.material = mats.lamp;
+    c.lampGlow.material = mats.lampGlow;
+    for (const e of c.edgeGlows) e.material = mats.edgeGlow;
     c.ground.material = mats.ground;
     // fresh skyline for every city chunk so blocks never visibly repeat
     const per = c.buildings.length / 2;
@@ -509,8 +609,21 @@ export class Road {
       if (c.group.position.z - CHUNK_LENGTH / 2 > RECYCLE_Z) {
         c.group.position.z -= CHUNK_COUNT * CHUNK_LENGTH;
         const next = this.sequence.next();
-        this.dress(c, next.kind, next.entrance, next.district);
+        this.dress(c, next.kind, next.entrance, next.district, next.gantry);
       }
+    }
+  }
+
+  /** test hook: z of every visible sign gantry */
+  get gantryZ(): number[] {
+    return this.chunks.filter((c) => c.gantry.visible).map((c) => Math.round(c.group.position.z));
+  }
+
+  /** Neon reflections on the wet road (needs the renderer, so set after construction). */
+  setEnvironment(env: THREE.Texture | null): void {
+    for (const m of this.asphaltMats) {
+      m.envMap = env;
+      m.needsUpdate = true;
     }
   }
 

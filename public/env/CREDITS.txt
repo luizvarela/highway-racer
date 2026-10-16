@@ -1,0 +1,3 @@
+Asphalt textures (asphalt-*.webp): "Asphalt 026 C" by ambientCG (https://ambientcg.com/a/Asphalt026C), CC0 1.0.
+The puddle pattern in asphalt-rough.webp is generated.
+Other images in this folder are AI-generated for this game.
