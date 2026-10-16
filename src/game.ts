@@ -233,6 +233,7 @@ export class Game {
       get hazards() { return game.hazards.snapshot(); },
       get portal() { return game.portal.name; },
       get audio() { return game.sound.state; },
+      get music() { return game.sound.musicState; },
       get missions() { return liveViews(game.save.missions, game.stats); },
       /** test-only: set the date missions/daily use (YYYY-MM-DD); "" = real clock */
       setDate(d: string) { setDateOverride(d); },
@@ -345,6 +346,7 @@ export class Game {
   }
 
   private start(): void {
+    this.sound.setMusicMode("drive");
     if (!this.hinted) {
       this.hinted = true; // first run of the session: show the controls for a few seconds
       this.hud.showHint();
@@ -707,6 +709,7 @@ export class Game {
   }
 
   private end(reason: RunStats["end"]): void {
+    this.sound.setMusicMode("menu");
     if (this.hintTime >= 0) {
       this.hintTime = -1;
       this.hud.hideHint();

@@ -12,6 +12,9 @@ export interface SoundFrame {
   heli: number; // 0..1
 }
 
+const MUSIC_URL = `${import.meta.env.BASE_URL}audio/neon-city-run.mp3${typeof __BUILD__ === "string" ? `?v=${__BUILD__}` : ""}`;
+const MUSIC = { menu: 0.45, drive: 0.32 }; // music volume (master is 0.8)
+
 export class Sound {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
@@ -25,6 +28,12 @@ export class Sound {
   private sirenOsc!: OscillatorNode;
   private sirenGain!: GainNode;
   private heliGain!: GainNode;
+  // music: streamed from an <audio> element into the graph, so mute, the
+  // portal's mute and ads silence it with everything else
+  private music: HTMLAudioElement | null = null;
+  private musicGain: GainNode | null = null;
+  private musicFilter: BiquadFilterNode | null = null;
+  private musicMode: "menu" | "drive" = "menu";
   private muted: boolean; // the player's toggle
   private forced = false; // the portal asks for silence (its own mute setting)
   private adPlaying = false;
@@ -42,8 +51,13 @@ export class Sound {
     this.muted = muted;
     document.addEventListener("visibilitychange", () => {
       if (!this.ctx) return;
-      if (document.hidden) void this.ctx.suspend();
-      else void this.ctx.resume();
+      if (document.hidden) {
+        void this.ctx.suspend();
+        this.music?.pause();
+      } else {
+        void this.ctx.resume();
+        this.playMusic();
+      }
     });
   }
 
@@ -89,6 +103,7 @@ export class Sound {
     const ctx = this.ctx;
     if (ctx && ctx.state === "running") {
       this.resumeTriedAt = 0;
+      if (this.music?.paused) this.playMusic(); // a refused play() gets another go on each gesture
       return;
     }
     if (ctx && ctx.state !== "closed") {
@@ -132,6 +147,7 @@ export class Sound {
     this.master.gain.value = this.silent ? 0 : 0.8;
     const comp = ctx.createDynamicsCompressor();
     this.master.connect(comp).connect(ctx.destination);
+    this.openMusic(ctx);
 
     this.noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const data = this.noise.getChannelData(0);
@@ -197,6 +213,65 @@ export class Sound {
     this.heliGain = ctx.createGain();
     this.heliGain.gain.value = 0;
     this.loopNoise().connect(heliLow).connect(chop).connect(this.heliGain).connect(this.master);
+  }
+
+  /** A fresh element per context: an element can only ever feed one context. */
+  private openMusic(ctx: AudioContext): void {
+    this.music?.pause();
+    const el = new Audio(MUSIC_URL);
+    el.loop = true;
+    el.preload = "auto";
+    this.music = el;
+    this.musicFilter = ctx.createBiquadFilter();
+    this.musicFilter.type = "lowpass";
+    this.musicGain = ctx.createGain();
+    this.applyMusicMode(true);
+    try {
+      ctx.createMediaElementSource(el).connect(this.musicFilter).connect(this.musicGain).connect(this.master);
+    } catch (e) {
+      this.note(`music not routed: ${e}`);
+    }
+    this.playMusic();
+  }
+
+  private playMusic(): void {
+    const el = this.music;
+    if (!el || document.hidden) return;
+    void el.play().catch((e) => this.note(`music: ${e}`));
+  }
+
+  /** Menus: the track muffled and softer. Driving: open and full, under the engine. */
+  setMusicMode(mode: "menu" | "drive"): void {
+    if (mode === this.musicMode) return;
+    this.musicMode = mode;
+    this.applyMusicMode(false);
+  }
+
+  private applyMusicMode(now: boolean): void {
+    if (!this.ctx || !this.musicGain || !this.musicFilter) return;
+    const drive = this.musicMode === "drive";
+    const t = this.ctx.currentTime;
+    const ramp = now ? 0.01 : 0.6;
+    this.musicGain.gain.setTargetAtTime(drive ? MUSIC.drive : MUSIC.menu, t, ramp);
+    this.musicFilter.frequency.setTargetAtTime(drive ? 16000 : 1100, t, ramp);
+  }
+
+  /** Dip the music under a big sound effect. */
+  private duckMusic(seconds: number): void {
+    if (!this.ctx || !this.musicGain) return;
+    const g = this.musicGain.gain;
+    const t = this.ctx.currentTime;
+    const level = this.musicMode === "drive" ? MUSIC.drive : MUSIC.menu;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(level * 0.25, t, 0.03);
+    g.setTargetAtTime(level, t + seconds, 0.5);
+  }
+
+  /** for tests */
+  get musicState(): string {
+    const el = this.music;
+    if (!el) return "none";
+    return `${el.paused ? "paused" : "playing"} t=${el.currentTime.toFixed(1)} mode=${this.musicMode} gain=${this.musicGain?.gain.value.toFixed(2)} lp=${Math.round(this.musicFilter?.frequency.value ?? 0)}`;
   }
 
   /** Older iOS only unlocks audio once a sound starts inside the gesture: play one silent sample. */
@@ -289,6 +364,7 @@ export class Sound {
   }
 
   crash(): void {
+    this.duckMusic(1.4);
     this.burst(0.9, "lowpass", 4000, 150, 0.9);
     this.tone(70, 0.45, "sine", 0.7, 0, 35);
     for (let i = 0; i < 4; i++) this.tone(300 + Math.random() * 700, 0.12, "square", 0.06, 0.05 + i * 0.07);

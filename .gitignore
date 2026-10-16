@@ -6,3 +6,4 @@ assets-src/**/*.glb
 _viewer.html
 public/_test/
 assets-src/env/
+assets-src/audio/
