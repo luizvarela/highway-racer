@@ -27,6 +27,7 @@ const HERO_FILES: Partial<Record<VehicleKind, string>> = {
   "hero-viper": "../hero/viper.glb",
   "hero-bruiser": "../hero/bruiser.glb",
   "hero-phantom": "../hero/phantom.glb",
+  police: "../hero/police.glb",
 };
 const isHero = (kind: VehicleKind) => kind in HERO_FILES;
 // light paint goes past the bloom threshold under the neon reflections: dim it
